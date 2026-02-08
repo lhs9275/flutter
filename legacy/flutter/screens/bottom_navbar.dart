@@ -1,0 +1,163 @@
+// lib/screens/bottom_navbar.dart
+import 'package:flutter/material.dart';
+
+// 🔁 각 탭이 열어줄 화면들 import
+import 'map.dart';
+import 'user/favorite.dart';
+import 'user/mypage.dart';
+import 'user/my_reservations.dart';
+import 'etc/ranking.dart';
+
+class MainBottomNavBar extends StatelessWidget {
+  /// 현재 선택된 탭 index (0: 추천랭킹, 1: 즐겨찾기, 2: 내 예약, 3: 내 정보)
+  /// 홈(지도)은 중앙 캐릭터 버튼이며 currentIndex = -1로 표기한다.
+  final int currentIndex;
+
+  const MainBottomNavBar({
+    super.key,
+    required this.currentIndex,
+  });
+
+  final Color _iconGrey = const Color(0xFFB5B5C3); // 선택 안 된 아이콘 색
+  final Color _selectedPurple = const Color(0xFF5F33DF);
+
+  void _handleTap(BuildContext context, int index) {
+    Widget? target;
+    switch (index) {
+      case 0: // ?? ??
+        target = const RankingScreen();
+        break;
+      case 1: // ????
+        target = const FavoritesPage();
+        break;
+      case 2: // ? ?? (???)
+        target = const MyReservationsScreen();
+        break;
+      case 3: // ?????
+        target = const MyPageScreen();
+        break;
+      default:
+        return;
+    }
+
+    if (target != null) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => target!),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        // 👆 튀어나올 공간 확보를 위해 전체 컨테이너 높이를 넉넉히 줌 (85~90)
+        height: 90,
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 10), // 바를 조금 더 아래로 내려서 공간 확보
+        child: Stack(
+          alignment: Alignment.bottomCenter, // 하단 중앙 정렬
+          clipBehavior: Clip.none, // 🚀 중요: 캐릭터가 영역 밖으로 튀어나가도 잘리지 않게 함
+          children: [
+            // 1️⃣ 배경이 되는 하얀색 바 (아이콘들)
+            Container(
+              height: 72, // 바 높이
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.92), // 살짝 비춰서 지도와 겹침을 느낄 수 있게
+                borderRadius: BorderRadius.circular(36),
+                boxShadow: [
+                  BoxShadow(
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                    color: Colors.black.withOpacity(0.08),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  // 좌측 아이콘 1: 추천 랭킹 (트로피 아이콘)
+                  _buildNavItem(
+                      context,
+                      index: 0,
+                      icon: Icons.emoji_events_outlined, // 빈 트로피
+                      selectedIcon: Icons.emoji_events_rounded // 꽉 찬 트로피
+                  ),
+
+                  // 좌측 아이콘 2: 즐겨찾기 (별 아이콘)
+                  _buildNavItem(
+                      context,
+                      index: 1,
+                      icon: Icons.star_border_rounded, // 빈 별
+                      selectedIcon: Icons.star_rounded // 꽉 찬 별
+                  ),
+
+                  // ✨ 중앙 공백 (캐릭터가 들어갈 자리를 비워둠)
+                  const SizedBox(width: 70),
+
+                  // 우측 아이콘
+                  _buildNavItem(context, index: 2, icon: Icons.assignment_outlined, selectedIcon: Icons.assignment_rounded),
+                  _buildNavItem(context, index: 3, icon: Icons.person_outline_rounded, selectedIcon: Icons.person_rounded),
+                ],
+              ),
+            ),
+
+            // 2️⃣ 튀어나온 캐릭터 (Positioned로 위치 잡기)
+            Positioned(
+              bottom: -10, // 👆 숫자를 키울수록 더 위로 올라갑니다
+              child: _buildCenterImageItem(context),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 아이콘 빌더
+  Widget _buildNavItem(BuildContext context, {
+    required int index,
+    required IconData icon,        // 기본 아이콘 (테두리)
+    required IconData selectedIcon // 선택됐을 때 아이콘 (채워짐)
+  }) {
+    final bool isSelected = currentIndex == index;
+
+    return GestureDetector(
+      onTap: () => _handleTap(context, index),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        color: Colors.transparent, // 터치 영역 확보
+        child: Icon(
+          isSelected ? selectedIcon : icon, // 선택되면 꽉 찬 아이콘, 아니면 테두리
+          size: 28, // 아이콘 크기 조금 키움
+          color: isSelected ? _selectedPurple : _iconGrey,
+        ),
+      ),
+    );
+  }
+
+  // 가운데 캐릭터 이미지 빌더
+  Widget _buildCenterImageItem(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _navigateHome(context),
+      child: Container(
+        width: 100, // 🚀 크기를 100으로 대폭 키움
+        height: 100,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+        ),
+        child: Image.asset(
+          'lib/assets/icons/mascot_character/sparky.png',
+          fit: BoxFit.contain, // 박스 크기(100x100)에 맞춰 비율 유지하며 꽉 채움
+        ),
+      ),
+    );
+  }
+
+  void _navigateHome(BuildContext context) {
+    if (currentIndex == -1) return; // 이미 홈이면 무시
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const MapScreen()),
+      (_) => false,
+    );
+  }
+}
