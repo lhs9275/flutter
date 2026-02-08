@@ -27,7 +27,7 @@ class UserHeaderFlutter extends StatelessWidget implements PreferredSizeWidget {
             height: 36,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFFF59E0B), Color(0xFFF97316)],
+                colors: [Color(0xFF6366F1), Color(0xFF818CF8)],
               ),
               borderRadius: BorderRadius.circular(10),
             ),
@@ -40,7 +40,7 @@ class UserHeaderFlutter extends StatelessWidget implements PreferredSizeWidget {
             children: [
               Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               if (subtitle != null)
-                Text(subtitle!, style: const TextStyle(fontSize: 12, color: Colors.amberAccent)),
+                Text(subtitle!, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
             ],
           ),
         ],
@@ -49,7 +49,7 @@ class UserHeaderFlutter extends StatelessWidget implements PreferredSizeWidget {
         if (onLogout != null)
           TextButton(
             onPressed: onLogout,
-            child: const Text('로그아웃', style: TextStyle(color: Colors.white70)),
+            child: const Text('로그아웃', style: TextStyle(color: Color(0xFF475569))),
           ),
       ],
     );

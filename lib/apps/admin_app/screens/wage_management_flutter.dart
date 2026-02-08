@@ -8,13 +8,13 @@ class WageManagementFlutter extends StatelessWidget {
     return ListView(
       children: const [
         ListTile(
-          tileColor: Color(0xFF1F2937),
+          tileColor: Color(0xFFFFFFFF),
           title: Text('김테스트'),
           subtitle: Text('이번주 정산 450,000원'),
         ),
         SizedBox(height: 12),
         ListTile(
-          tileColor: Color(0xFF1F2937),
+          tileColor: Color(0xFFFFFFFF),
           title: Text('이철수'),
           subtitle: Text('이번주 정산 320,000원'),
         ),

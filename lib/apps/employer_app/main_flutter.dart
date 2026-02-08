@@ -28,9 +28,15 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
   int _selectedSiteIndex = 0;
 
   final ThemeData _theme = ThemeData(
-    brightness: Brightness.dark,
-    scaffoldBackgroundColor: const Color(0xFF0F172A),
-    colorSchemeSeed: const Color(0xFF4F46E5),
+    brightness: Brightness.light,
+    scaffoldBackgroundColor: const Color(0xFFF1F5F9),
+    colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6366F1), brightness: Brightness.light),
+    primaryColor: const Color(0xFF6366F1),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Color(0xFFF8FAFC),
+      foregroundColor: Color(0xFF0F172A),
+      elevation: 0,
+    ),
     useMaterial3: false,
   );
 
@@ -135,9 +141,9 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1F2937),
+        color: const Color(0xFFFFFFFF),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF374151)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -158,7 +164,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
           children: [
             const Text('구인자 파트너 앱', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            const Text('현장 관리자 전용', style: TextStyle(color: Colors.white70)),
+            const Text('현장 관리자 전용', style: TextStyle(color: Color(0xFF475569))),
             const SizedBox(height: 24),
             _sectionCard(
               title: '로그인',
@@ -184,7 +190,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
               ],
             ),
             const SizedBox(height: 8),
-            const Text('테스트 계정: 01099998888', style: TextStyle(color: Colors.white54, fontSize: 12)),
+            const Text('테스트 계정: 01099998888', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
           ],
         ),
       ),
@@ -240,9 +246,9 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
               Container(
                 height: 120,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF111827),
+                  color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFF374151), style: BorderStyle.solid),
+                  border: Border.all(color: const Color(0xFFE2E8F0), style: BorderStyle.solid),
                 ),
                 child: const Center(child: Text('명함 촬영 또는 업로드')),
               ),
@@ -297,7 +303,12 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                 ? Colors.green
                 : status == SiteStatus.rejected
                     ? Colors.red
-                    : Colors.amber;
+                    : const Color(0xFFFBBF24);
+            final statusTextColor = status == SiteStatus.approved
+                ? Colors.green
+                : status == SiteStatus.rejected
+                    ? Colors.red
+                    : const Color(0xFF92400E);
 
             return GestureDetector(
               onTap: () {
@@ -312,9 +323,9 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1F2937),
+                  color: const Color(0xFFFFFFFF),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF374151)),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -333,17 +344,18 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                           decoration: BoxDecoration(
                             color: statusColor.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: statusColor.withOpacity(0.7)),
                           ),
-                          child: Text(statusText, style: TextStyle(color: statusColor)),
+                          child: Text(statusText, style: TextStyle(color: statusTextColor)),
                         ),
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Text(site['address'] as String, style: const TextStyle(color: Colors.white70)),
+                    Text(site['address'] as String, style: const TextStyle(color: Color(0xFF475569))),
                     const SizedBox(height: 8),
-                    Text('직종: ${site['jobType']}', style: const TextStyle(color: Colors.white54)),
+                    Text('직종: ${site['jobType']}', style: const TextStyle(color: Color(0xFF64748B))),
                     const SizedBox(height: 4),
-                    Text('등록: ${site['createdAt']}', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                    Text('등록: ${site['createdAt']}', style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
                     if (status == SiteStatus.approved)
                       Align(
                         alignment: Alignment.centerRight,
@@ -415,14 +427,14 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
           _sectionCard(
             title: site['name'] as String,
             children: [
-              Text(site['address'] as String, style: const TextStyle(color: Colors.white70)),
+              Text(site['address'] as String, style: const TextStyle(color: Color(0xFF475569))),
               const SizedBox(height: 12),
               Container(
                 height: 120,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF111827),
+                  color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFF374151)),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
                 child: const Center(child: Text('지도 연동 화면 (네이버/카카오맵)')),
               ),
@@ -450,7 +462,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                   (job) => ListTile(
                     title: Text('${job['date']} · ${job['jobType']} ${job['count']}명'),
                     subtitle: Text('단가 ${job['rate']}원'),
-                    trailing: Text(job['status']!, style: const TextStyle(color: Colors.white70)),
+                    trailing: Text(job['status']!, style: const TextStyle(color: Color(0xFF475569))),
                   ),
                 )
                 .toList(),
@@ -468,9 +480,9 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
             (notice) => _sectionCard(
               title: notice['title']!,
               children: [
-                Text(notice['date']!, style: const TextStyle(color: Colors.white54)),
+                Text(notice['date']!, style: const TextStyle(color: Color(0xFF64748B))),
                 const SizedBox(height: 8),
-                Text(notice['content']!, style: const TextStyle(color: Colors.white70)),
+                Text(notice['content']!, style: const TextStyle(color: Color(0xFF475569))),
               ],
             ),
           )

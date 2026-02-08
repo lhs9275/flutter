@@ -10,16 +10,16 @@ class TooltipFlutter extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
+        color: const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF374151)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.info, size: 16, color: Colors.white70),
+          const Icon(Icons.info, size: 16, color: Color(0xFF475569)),
           const SizedBox(width: 6),
-          Flexible(child: Text(message, style: const TextStyle(color: Colors.white70))),
+          Flexible(child: Text(message, style: const TextStyle(color: Color(0xFF475569)))),
         ],
       ),
     );

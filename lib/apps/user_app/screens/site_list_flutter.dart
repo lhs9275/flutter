@@ -19,51 +19,118 @@ class SiteListFlutter extends StatelessWidget {
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final site = sites[index];
+        final name = site['name'] ?? '';
+        final address = site['address'] ?? '';
+        final type = site['type'] ?? '';
+        final pay = site['pay'] ?? '-';
+        final date = site['date'] ?? '-';
         return Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF1F2937),
+            color: const Color(0xFFFFFFFF),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF374151)),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(site['name'] ?? '', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 6),
-              Text(site['address'] ?? '', style: const TextStyle(color: Colors.white70)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
+              Row(
                 children: [
-                  Chip(label: Text(site['type'] ?? '')),
-                  Text('일급 ${site['pay'] ?? '-'}원', style: const TextStyle(color: Colors.white70)),
+                  Expanded(
+                    child: Text(
+                      name,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Text(
+                      '일급 $pay원',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 6),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('근무일: ${site['date'] ?? '-'}', style: const TextStyle(color: Colors.white54)),
-                  Row(
-                    children: [
-                      TextButton(
-                        onPressed: () => onViewDetail(site),
-                        child: const Text('상세보기'),
+                  const Icon(Icons.place, size: 14, color: Color(0xFF64748B)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(address, style: const TextStyle(color: Color(0xFF475569))),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _InfoChip(label: '직종', value: type),
+                  _InfoChip(label: '근무일', value: date),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 96,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
                       ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () => onApply(site),
-                        child: const Text('지원하기'),
+                      onPressed: () => onViewDetail(site),
+                      child: const Text('상세보기'),
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  SizedBox(
+                    width: 96,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
                       ),
-                    ],
-                  )
+                      onPressed: () => onApply(site),
+                      child: const Text('지원하기'),
+                    ),
+                  ),
                 ],
               ),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Text(
+        '$label · $value',
+        style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+      ),
     );
   }
 }

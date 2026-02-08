@@ -10,7 +10,7 @@ class FooterFlutter extends StatelessWidget {
       alignment: Alignment.center,
       child: const Text(
         '© 2024 Construction Workforce Matching Platform.',
-        style: TextStyle(color: Colors.white54, fontSize: 12),
+        style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
       ),
     );
   }

@@ -8,9 +8,9 @@ class SiteMapFlutter extends StatelessWidget {
     return Container(
       height: 140,
       decoration: BoxDecoration(
-        color: const Color(0xFF111827),
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF374151)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: const Center(child: Text('지도 미리보기 (네이버/카카오맵)')),
     );

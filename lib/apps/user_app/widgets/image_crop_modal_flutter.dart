@@ -12,7 +12,7 @@ class ImageCropModalFlutter extends StatelessWidget {
       content: Container(
         height: 200,
         width: 200,
-        color: const Color(0xFF1F2937),
+        color: const Color(0xFFFFFFFF),
         child: const Center(child: Text('이미지 크롭 영역')),
       ),
       actions: [

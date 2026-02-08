@@ -42,10 +42,18 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
   bool _rememberMe = true;
   Map<String, String>? _selectedSite;
 
+  static const Color _accent = Color(0xFF6366F1);
+
   final ThemeData _theme = ThemeData(
-    brightness: Brightness.dark,
-    scaffoldBackgroundColor: const Color(0xFF0F172A),
-    colorSchemeSeed: const Color(0xFF6366F1),
+    brightness: Brightness.light,
+    scaffoldBackgroundColor: const Color(0xFFF1F5F9),
+    colorScheme: ColorScheme.fromSeed(seedColor: _accent, brightness: Brightness.light),
+    primaryColor: _accent,
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Color(0xFFF8FAFC),
+      foregroundColor: Color(0xFF0F172A),
+      elevation: 0,
+    ),
     useMaterial3: false,
   );
 
@@ -113,9 +121,9 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: const Color(0xFF1F2937),
+            color: const Color(0xFFFFFFFF),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF374151)),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: child,
         ),
@@ -157,7 +165,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
             children: [
               const Text('건설 인력 매칭', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              const Text('근로자 전용 앱', style: TextStyle(color: Colors.white70)),
+              const Text('근로자 전용 앱', style: TextStyle(color: Color(0xFF475569))),
               const SizedBox(height: 16),
               LoginFlutter(
                 rememberMe: _rememberMe,
@@ -165,7 +173,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
                 onContinue: () => setState(() => _view = UserView.authenticate),
               ),
               const SizedBox(height: 8),
-              const Text('테스트 계정: 01011112222', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              const Text('테스트 계정: 01011112222', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
               const SizedBox(height: 8),
               const FooterFlutter(),
             ],

@@ -18,13 +18,13 @@ class SiteDetailFlutter extends StatelessWidget {
       children: [
         Text(site['name'] ?? '', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
         const SizedBox(height: 6),
-        Text(site['address'] ?? '', style: const TextStyle(color: Colors.white70)),
+        Text(site['address'] ?? '', style: const TextStyle(color: Color(0xFF475569))),
         const SizedBox(height: 12),
         Wrap(
           spacing: 8,
           children: [
             Chip(label: Text(site['type'] ?? '')),
-            Text('일급 ${site['pay'] ?? '-'}원', style: const TextStyle(color: Colors.white70)),
+            Text('일급 ${site['pay'] ?? '-'}원', style: const TextStyle(color: Color(0xFF475569))),
           ],
         ),
         const SizedBox(height: 16),

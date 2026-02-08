@@ -37,9 +37,15 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
   Map<String, String>? _selectedMember;
 
   final ThemeData _theme = ThemeData(
-    brightness: Brightness.dark,
-    scaffoldBackgroundColor: const Color(0xFF0F172A),
-    colorSchemeSeed: const Color(0xFF0EA5E9),
+    brightness: Brightness.light,
+    scaffoldBackgroundColor: const Color(0xFFF1F5F9),
+    colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6366F1), brightness: Brightness.light),
+    primaryColor: const Color(0xFF6366F1),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Color(0xFFF8FAFC),
+      foregroundColor: Color(0xFF0F172A),
+      elevation: 0,
+    ),
     useMaterial3: false,
   );
 
@@ -85,7 +91,7 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
         padding: EdgeInsets.zero,
         children: [
           DrawerHeader(
-            decoration: const BoxDecoration(color: Color(0xFF1F2937)),
+            decoration: const BoxDecoration(color: Color(0xFFFFFFFF)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [

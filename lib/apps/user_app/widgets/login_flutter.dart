@@ -21,7 +21,7 @@ class LoginFlutter extends StatelessWidget {
       children: [
         const Text('로그인 / 회원가입', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        const Text('비밀번호 없이 휴대폰 번호로 간편하게 시작하세요.', style: TextStyle(color: Colors.white70)),
+        const Text('비밀번호 없이 휴대폰 번호로 간편하게 시작하세요.', style: TextStyle(color: Color(0xFF475569))),
         const SizedBox(height: 16),
         TextField(
           keyboardType: TextInputType.phone,
@@ -36,7 +36,7 @@ class LoginFlutter extends StatelessWidget {
           value: rememberMe,
           onChanged: onRememberChanged,
           title: const Text('로그인 상태 유지'),
-          subtitle: const Text('브라우저에 로그인 정보가 저장됩니다.', style: TextStyle(color: Colors.white54)),
+          subtitle: const Text('브라우저에 로그인 정보가 저장됩니다.', style: TextStyle(color: Color(0xFF64748B))),
         ),
         const SizedBox(height: 12),
         SizedBox(

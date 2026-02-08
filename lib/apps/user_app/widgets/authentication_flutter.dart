@@ -36,7 +36,7 @@ class AuthenticationFlutter extends StatelessWidget {
         const SizedBox(height: 8),
         const Text('인증번호 입력', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
-        Text('${_maskPhone(phone)}(으)로 전송된 6자리 인증번호를 입력해주세요.', style: const TextStyle(color: Colors.white70)),
+        Text('${_maskPhone(phone)}(으)로 전송된 6자리 인증번호를 입력해주세요.', style: const TextStyle(color: Color(0xFF475569))),
         const SizedBox(height: 16),
         TextField(
           keyboardType: TextInputType.number,

@@ -10,9 +10,9 @@ class NoticeManagementFlutter extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF1F2937),
+            color: const Color(0xFFFFFFFF),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF374151)),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -35,13 +35,13 @@ class NoticeManagementFlutter extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         const ListTile(
-          tileColor: Color(0xFF1F2937),
+          tileColor: Color(0xFFFFFFFF),
           title: Text('안전 교육 공지'),
           subtitle: Text('모든 현장 필수'),
         ),
         const SizedBox(height: 12),
         const ListTile(
-          tileColor: Color(0xFF1F2937),
+          tileColor: Color(0xFFFFFFFF),
           title: Text('휴무일 안내'),
           subtitle: Text('광복절 휴무'),
         ),

@@ -8,13 +8,13 @@ class PermissionManagementFlutter extends StatelessWidget {
     return ListView(
       children: const [
         ListTile(
-          tileColor: Color(0xFF1F2937),
+          tileColor: Color(0xFFFFFFFF),
           title: Text('master'),
           subtitle: Text('전체 권한'),
         ),
         SizedBox(height: 12),
         ListTile(
-          tileColor: Color(0xFF1F2937),
+          tileColor: Color(0xFFFFFFFF),
           title: Text('site_admin'),
           subtitle: Text('현장 관리 권한'),
         ),

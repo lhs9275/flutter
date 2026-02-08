@@ -67,7 +67,7 @@ class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
   void _showEventSheet(BuildContext context, DateTime date, List<_CalendarEvent> events) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: const Color(0xFFF1F5F9),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -88,7 +88,7 @@ class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
                     const Spacer(),
                     IconButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close, size: 20, color: Color(0xFFCBD5F5)),
+                      icon: const Icon(Icons.close, size: 20, color: Color(0xFF475569)),
                     ),
                   ],
                 ),
@@ -98,15 +98,15 @@ class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1F2937),
+                      color: const Color(0xFFFFFFFF),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF374151)),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
                     child: Row(
                       children: [
                         const DecoratedBox(
                           decoration: BoxDecoration(
-                            color: Color(0xFFF59E0B),
+                            color: Color(0xFF6366F1),
                             shape: BoxShape.circle,
                           ),
                           child: SizedBox(width: 8, height: 8),
@@ -150,9 +150,9 @@ class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF1F2937),
+              color: const Color(0xFFFFFFFF),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF374151)),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -161,7 +161,7 @@ class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
                   children: [
                     IconButton(
                       onPressed: _goToPreviousMonth,
-                      icon: const Icon(Icons.chevron_left, color: Color(0xFFCBD5F5)),
+                      icon: const Icon(Icons.chevron_left, color: Color(0xFF475569)),
                       splashRadius: 20,
                     ),
                     Expanded(
@@ -173,18 +173,18 @@ class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
                     ),
                     IconButton(
                       onPressed: _goToNextMonth,
-                      icon: const Icon(Icons.chevron_right, color: Color(0xFFCBD5F5)),
+                      icon: const Icon(Icons.chevron_right, color: Color(0xFF475569)),
                       splashRadius: 20,
                     ),
                     const SizedBox(width: 6),
                     TextButton(
                       onPressed: _jumpToToday,
                       style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFFCBD5F5),
+                        foregroundColor: const Color(0xFF475569),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        backgroundColor: const Color(0xFF0F172A),
+                        backgroundColor: const Color(0xFFF1F5F9),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-                        side: const BorderSide(color: Color(0xFF334155)),
+                        side: const BorderSide(color: Color(0xFFE2E8F0)),
                       ),
                       child: Text(isCurrentMonth ? '이번달' : '오늘', style: const TextStyle(fontSize: 12)),
                     ),
@@ -227,7 +227,7 @@ class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
                           ? const Color(0xFFF87171)
                           : weekdayIndex == 6
                               ? const Color(0xFF60A5FA)
-                              : Colors.white;
+                              : const Color(0xFF0F172A);
 
                       return Material(
                         color: Colors.transparent,
@@ -237,9 +237,9 @@ class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
                           child: Container(
                             margin: const EdgeInsets.all(2),
                             decoration: BoxDecoration(
-                              color: isToday ? const Color(0xFF0B1220) : Colors.transparent,
+                              color: isToday ? const Color(0xFFF1F5F9) : Colors.transparent,
                               borderRadius: BorderRadius.circular(10),
-                              border: isToday ? Border.all(color: const Color(0xFFF59E0B)) : null,
+                              border: isToday ? Border.all(color: const Color(0xFF6366F1)) : null,
                             ),
                             child: Stack(
                               children: [
@@ -260,7 +260,7 @@ class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
                                       padding: EdgeInsets.only(bottom: 6),
                                       child: DecoratedBox(
                                         decoration: BoxDecoration(
-                                          color: Color(0xFFF59E0B),
+                                          color: Color(0xFF6366F1),
                                           shape: BoxShape.circle,
                                         ),
                                         child: SizedBox(width: 6, height: 6),
@@ -282,7 +282,7 @@ class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
                 ),
                 const SizedBox(height: 6),
                 if (monthlyEvents.isEmpty)
-                  const Text('등록된 일정이 없습니다.', style: TextStyle(color: Color(0xFF94A3B8))),
+                  const Text('등록된 일정이 없습니다.', style: TextStyle(color: Color(0xFF64748B))),
                 if (monthlyEvents.isNotEmpty)
                   Column(
                     children: monthlyEvents
@@ -322,7 +322,7 @@ class _WeekdayLabel extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: color ?? const Color(0xFF94A3B8),
+            color: color ?? const Color(0xFF64748B),
           ),
         ),
       ),
@@ -348,20 +348,20 @@ class _EventRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
+        color: const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF334155)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: const Color(0xFF1F2937),
+              color: const Color(0xFFFFFFFF),
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: const Color(0xFF334155)),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
-            child: Text(date, style: const TextStyle(fontSize: 12, color: Color(0xFFCBD5F5))),
+            child: Text(date, style: const TextStyle(fontSize: 12, color: Color(0xFF475569))),
           ),
           const SizedBox(width: 10),
           Expanded(

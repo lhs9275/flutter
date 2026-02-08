@@ -27,10 +27,10 @@ class MemberManagementFlutter extends StatelessWidget {
       itemBuilder: (context, index) {
         final member = members[index];
         return ListTile(
-          tileColor: const Color(0xFF1F2937),
+          tileColor: const Color(0xFFFFFFFF),
           title: Text(member['name'] ?? ''),
           subtitle: Text(member['phone'] ?? ''),
-          trailing: Text(member['status'] ?? '', style: const TextStyle(color: Colors.white70)),
+          trailing: Text(member['status'] ?? '', style: const TextStyle(color: Color(0xFF475569))),
           onTap: () => onSelectMember(member),
         );
       },

@@ -49,13 +49,13 @@ class _RouterFlutterState extends State<RouterFlutter> {
       label: '근로자',
       description: '내 주변 현장을 찾고 간편하게 지원하세요.',
       testHint: '01011112222',
-      accent: Color(0xFFF59E0B),
+      accent: Color(0xFF6366F1),
     ),
     Role.employer: RoleConfig(
       label: '구인자',
       description: '현장 등록부터 출석 관리까지 한 번에.',
       testHint: '01099998888',
-      accent: Color(0xFF6366F1),
+      accent: Color(0xFF4F46E5),
     ),
   };
 
@@ -120,8 +120,8 @@ class _RouterFlutterState extends State<RouterFlutter> {
       right: 16,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF1F2937),
-          foregroundColor: const Color(0xFFE5E7EB),
+          backgroundColor: const Color(0xFF6366F1),
+          foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
         ),
@@ -142,13 +142,13 @@ class _RouterFlutterState extends State<RouterFlutter> {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 360),
         child: Material(
-          color: const Color(0xFF0F172A),
+          color: const Color(0xFFFFFFFF),
           borderRadius: BorderRadius.circular(16),
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF334155)),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -157,13 +157,13 @@ class _RouterFlutterState extends State<RouterFlutter> {
                   alignment: Alignment.topRight,
                   child: IconButton(
                     onPressed: () => setState(() => _isAdminPanelOpen = false),
-                    icon: const Icon(Icons.close, size: 18, color: Color(0xFFE2E8F0)),
+                    icon: const Icon(Icons.close, size: 18, color: Color(0xFF475569)),
                     splashRadius: 18,
                   ),
                 ),
                 AdminLoginFlutter(onLogin: _handleAdminLogin),
                 const SizedBox(height: 12),
-                const Text('테스트 계정: master / 1', style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
+                const Text('테스트 계정: master / 1', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
               ],
             ),
           ),
@@ -176,9 +176,9 @@ class _RouterFlutterState extends State<RouterFlutter> {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: const Color(0xFF1F2937),
+        color: const Color(0xFFFFFFFF),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF334155)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Row(
         children: Role.values.map((role) {
@@ -191,7 +191,7 @@ class _RouterFlutterState extends State<RouterFlutter> {
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
-                  color: isActive ? const Color(0xFF0B1220) : Colors.transparent,
+                  color: isActive ? const Color(0xFFF1F5F9) : Colors.transparent,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: isActive ? roleConfig.accent : Colors.transparent,
@@ -202,7 +202,7 @@ class _RouterFlutterState extends State<RouterFlutter> {
                   roleConfig.label,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: isActive ? roleConfig.accent : const Color(0xFF94A3B8),
+                    color: isActive ? roleConfig.accent : const Color(0xFF64748B),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -219,9 +219,9 @@ class _RouterFlutterState extends State<RouterFlutter> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('로그인 / 회원가입', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.amberAccent)),
+          const Text('로그인 / 회원가입', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF6366F1))),
           const SizedBox(height: 8),
-          const Text('비밀번호 없이 휴대폰 번호로 간편하게 시작하세요.', style: TextStyle(color: Color(0xFF94A3B8))),
+          const Text('비밀번호 없이 휴대폰 번호로 간편하게 시작하세요.', style: TextStyle(color: Color(0xFF64748B))),
           const SizedBox(height: 16),
           TextField(
             controller: _phoneController,
@@ -236,7 +236,7 @@ class _RouterFlutterState extends State<RouterFlutter> {
           SwitchListTile(
             value: _rememberMe,
             onChanged: (value) => setState(() => _rememberMe = value),
-            subtitle: const Text('로그인 상태 유지 브라우저에 로그인 정보가 저장됩니다.', style: TextStyle(color: Color(0xFF94A3B8))),
+            subtitle: const Text('로그인 상태 유지 브라우저에 로그인 정보가 저장됩니다.', style: TextStyle(color: Color(0xFF64748B))),
           ),
           const SizedBox(height: 12),
           SizedBox(
@@ -270,7 +270,7 @@ class _RouterFlutterState extends State<RouterFlutter> {
     }
     final config = _roleConfig[_activeRole]!;
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: const Color(0xFFF1F5F9),
       body: Stack(
         children: [
           SafeArea(
@@ -287,18 +287,18 @@ class _RouterFlutterState extends State<RouterFlutter> {
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              colors: [Color(0xFFF59E0B), Color(0xFFF97316)],
+                              colors: [Color(0xFF6366F1), Color(0xFF818CF8)],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
                             borderRadius: BorderRadius.circular(20),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Color(0x552B1300),
-                                blurRadius: 12,
-                                offset: Offset(0, 6),
-                              ),
-                            ],
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x33243388),
+                              blurRadius: 12,
+                              offset: Offset(0, 6),
+                            ),
+                          ],
                           ),
                           child: const Icon(Icons.domain, size: 40, color: Colors.white),
                         ),
@@ -309,7 +309,7 @@ class _RouterFlutterState extends State<RouterFlutter> {
                           style: TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            color: Color(0xFF0F172A),
                             letterSpacing: 0.5,
                           ),
                         ),
@@ -318,7 +318,7 @@ class _RouterFlutterState extends State<RouterFlutter> {
                           '현장과 인력을 잇는 스마트한 솔루션.\n'
                           '채용부터 급여 정산까지, 하나의 플랫폼에서 관리하세요.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 16, color: Color(0xFF94A3B8)),
+                          style: TextStyle(fontSize: 16, color: Color(0xFF64748B)),
                         ),
                         const SizedBox(height: 24),
                         _buildRoleSelector(),
@@ -326,14 +326,14 @@ class _RouterFlutterState extends State<RouterFlutter> {
                         Text(
                           config.description,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 14, color: Color(0xFFCBD5F5)),
+                          style: const TextStyle(fontSize: 14, color: Color(0xFF475569)),
                         ),
                         const SizedBox(height: 24),
                         _authStep == AuthStep.verify ? _buildVerifyCard(config) : _buildLoginCard(config),
                         const SizedBox(height: 12),
                         Text(
                           '테스트 계정: ${config.testHint}',
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                         ),
                         const SizedBox(height: 6),
                         TextButton(
@@ -342,7 +342,7 @@ class _RouterFlutterState extends State<RouterFlutter> {
                             '관리자 로그인',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Color(0xFF94A3B8),
+                              color: Color(0xFF64748B),
                               decoration: TextDecoration.underline,
                             ),
                           ),
@@ -415,9 +415,9 @@ class _AuthCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1F2937),
+        color: const Color(0xFFFFFFFF),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF374151)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: child,
     );
