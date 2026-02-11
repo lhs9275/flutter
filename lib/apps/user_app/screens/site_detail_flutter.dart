@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../widgets/site_map_flutter.dart';
+import '../../../widgets/map_launcher_card_flutter.dart';
 
 class SiteDetailFlutter extends StatelessWidget {
   const SiteDetailFlutter({
@@ -8,11 +8,20 @@ class SiteDetailFlutter extends StatelessWidget {
     required this.onApply,
   });
 
-  final Map<String, String> site;
+  final Map<String, dynamic> site;
   final VoidCallback onApply;
+
+  double? _toDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
 
   @override
   Widget build(BuildContext context) {
+    final lat = _toDouble(site['lat']);
+    final lng = _toDouble(site['lng']);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -28,7 +37,12 @@ class SiteDetailFlutter extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 16),
-        const SiteMapFlutter(),
+        MapLauncherCardFlutter(
+          name: site['name'] ?? '',
+          address: site['address'] ?? '',
+          latitude: lat,
+          longitude: lng,
+        ),
         const SizedBox(height: 16),
         SizedBox(
           width: double.infinity,

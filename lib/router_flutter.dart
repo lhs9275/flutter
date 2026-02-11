@@ -43,6 +43,8 @@ class _RouterFlutterState extends State<RouterFlutter> {
   bool _rememberMe = true;
   bool _isAdminPanelOpen = false;
   final TextEditingController _phoneController = TextEditingController();
+  UserView _userInitialView = UserView.sites;
+  EmployerView _employerInitialView = EmployerView.dashboard;
 
   final Map<Role, RoleConfig> _roleConfig = const {
     Role.user: RoleConfig(
@@ -79,29 +81,62 @@ class _RouterFlutterState extends State<RouterFlutter> {
     });
   }
 
-  void _handlePhoneLogin() {
-    final config = _roleConfig[_activeRole]!;
-    final raw = _phoneController.text.trim();
-    final phone = raw.isEmpty ? config.testHint : raw;
+  String _normalizePhone(String phone) {
+    return phone.replaceAll(RegExp(r'\D'), '');
+  }
+
+  bool _isKnownRolePhone(Role role, String phone) {
+    final normalized = _normalizePhone(phone);
+    if (normalized.isEmpty) return false;
+    final testHint = _normalizePhone(_roleConfig[role]!.testHint);
+    return normalized == testHint;
+  }
+
+  void _openRoleApp({required Role role, required bool register}) {
     setState(() {
-      _phoneToVerify = phone;
+      if (role == Role.user) {
+        _userInitialView = register ? UserView.register : UserView.sites;
+        _view = RouterView.user;
+      } else {
+        _employerInitialView = register ? EmployerView.register : EmployerView.dashboard;
+        _view = RouterView.employer;
+      }
+      _resetAuthFlow();
+      _isAdminPanelOpen = false;
+    });
+  }
+
+  void _handlePhoneLogin() {
+    final raw = _phoneController.text.trim();
+    final normalized = _normalizePhone(raw);
+    if (normalized.isEmpty || !_isKnownRolePhone(_activeRole, normalized)) {
+      _openRoleApp(role: _activeRole, register: true);
+      return;
+    }
+    setState(() {
+      _phoneController.text = normalized;
+      _phoneToVerify = normalized;
       _authRole = _activeRole;
       _authStep = AuthStep.verify;
     });
   }
 
   void _handlePhoneAuthSuccess() {
-    if (_authRole == null) return;
-    setState(() {
-      _view = _authRole == Role.user ? RouterView.user : RouterView.employer;
-      _resetAuthFlow();
-      _isAdminPanelOpen = false;
-    });
+    final role = _authRole;
+    if (role == null) return;
+    _openRoleApp(role: role, register: false);
+  }
+
+  void _handlePhoneRegister() {
+    final role = _authRole ?? _activeRole;
+    _openRoleApp(role: role, register: true);
   }
 
   void _handleBackToLanding() {
     setState(() {
       _view = RouterView.landing;
+      _userInitialView = UserView.sites;
+      _employerInitialView = EmployerView.dashboard;
       _resetAuthFlow();
       _isAdminPanelOpen = false;
     });
@@ -259,7 +294,7 @@ class _RouterFlutterState extends State<RouterFlutter> {
         phone: phone,
         onBack: () => setState(() => _resetAuthFlow()),
         onVerified: _handlePhoneAuthSuccess,
-        onRegister: _handlePhoneAuthSuccess,
+        onRegister: _handlePhoneRegister,
       ),
     );
   }
@@ -380,16 +415,16 @@ class _RouterFlutterState extends State<RouterFlutter> {
     switch (_view) {
       case RouterView.user:
         return _buildEmbeddedView(
-          const UserAppFlutter(
+          UserAppFlutter(
             embedded: true,
-            initialView: UserView.sites,
+            initialView: _userInitialView,
           ),
         );
       case RouterView.employer:
         return _buildEmbeddedView(
-          const EmployerAppFlutter(
+          EmployerAppFlutter(
             embedded: true,
-            initialView: EmployerView.dashboard,
+            initialView: _employerInitialView,
           ),
         );
       case RouterView.admin:

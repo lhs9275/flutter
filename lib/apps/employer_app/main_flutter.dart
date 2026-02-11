@@ -1,4 +1,8 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import '../../../widgets/attendance_qr_helper.dart';
+import '../../../widgets/map_launcher_card_flutter.dart';
 
 void main() {
   runApp(const EmployerAppFlutter());
@@ -26,6 +30,8 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
   late EmployerView _view;
   bool _rememberMe = true;
   int _selectedSiteIndex = 0;
+  bool _showNoShowOnly = false;
+  AttendanceQrPayload? _attendanceQr;
 
   final ThemeData _theme = ThemeData(
     brightness: Brightness.light,
@@ -46,21 +52,27 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
       'address': '서울 서초구 반포동',
       'jobType': '조공',
       'status': SiteStatus.approved,
-      'createdAt': '2024-07-25 10:00'
+      'createdAt': '2024-07-25 10:00',
+      'lat': 37.5036,
+      'lng': 127.0056,
     },
     {
       'name': '판교 IT센터',
       'address': '경기 성남시 분당구',
       'jobType': '보통인부',
       'status': SiteStatus.pending,
-      'createdAt': '2024-08-01 09:20'
+      'createdAt': '2024-08-01 09:20',
+      'lat': 37.3946,
+      'lng': 127.1112,
     },
     {
       'name': '홍대 리모델링',
       'address': '서울 마포구',
       'jobType': '기공',
       'status': SiteStatus.rejected,
-      'createdAt': '2024-08-03 14:10'
+      'createdAt': '2024-08-03 14:10',
+      'lat': 37.5563,
+      'lng': 126.9227,
     },
   ];
 
@@ -92,6 +104,12 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
       'rate': '160,000',
       'status': '배정 완료',
     },
+  ];
+
+  final List<Map<String, dynamic>> _assignedWorkers = const [
+    {'name': '김근로', 'role': '조공', 'phone': '010-1234-5678', 'noShowCount': 0},
+    {'name': '이인부', 'role': '보통인부', 'phone': '010-2222-3333', 'noShowCount': 1},
+    {'name': '박기공', 'role': '기공', 'phone': '010-4444-5555', 'noShowCount': 3},
   ];
 
   @override
@@ -298,7 +316,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                 ? '승인됨'
                 : status == SiteStatus.rejected
                     ? '반려됨'
-                    : '승인 대기';
+                    : '전화 확인 대기';
             final statusColor = status == SiteStatus.approved
                 ? Colors.green
                 : status == SiteStatus.rejected
@@ -384,16 +402,59 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFBFDBFE)),
+            ),
+            child: Row(
+              children: const [
+                Icon(Icons.phone_in_talk, color: Color(0xFF2563EB)),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '현장 등록은 담당자에게 전화로 진위 확인 후 승인됩니다. (최초 1회)',
+                    style: TextStyle(color: Color(0xFF1E3A8A)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _sectionCard(
+            title: '사업자 정보',
+            children: [
+              TextField(decoration: const InputDecoration(labelText: '사업자명', filled: true)),
+              const SizedBox(height: 12),
+              TextField(decoration: const InputDecoration(labelText: '사업자등록번호', filled: true)),
+              const SizedBox(height: 12),
+              TextField(decoration: const InputDecoration(labelText: '대표자명', filled: true)),
+              const SizedBox(height: 12),
+              TextField(
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: '사업자 연락처', filled: true),
+              ),
+            ],
+          ),
+          _sectionCard(
+            title: '현장 대리인 연락처',
+            children: [
+              TextField(decoration: const InputDecoration(labelText: '대리인 이름', filled: true)),
+              const SizedBox(height: 12),
+              TextField(
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: '대리인 연락처', filled: true),
+              ),
+            ],
+          ),
           _sectionCard(
             title: '현장 정보 입력',
             children: [
               TextField(decoration: const InputDecoration(labelText: '현장명', filled: true)),
               const SizedBox(height: 12),
               TextField(decoration: const InputDecoration(labelText: '주소', filled: true)),
-              const SizedBox(height: 12),
-              TextField(decoration: const InputDecoration(labelText: '담당자 이름', filled: true)),
-              const SizedBox(height: 12),
-              TextField(decoration: const InputDecoration(labelText: '담당자 연락처', filled: true)),
               const SizedBox(height: 12),
               DropdownButtonFormField(
                 items: const [
@@ -410,7 +471,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () => setState(() => _view = EmployerView.dashboard),
-              child: const Text('등록 요청 (관리자 승인 필요)'),
+              child: const Text('등록 요청 (전화 확인 후 승인)'),
             ),
           ),
         ],
@@ -420,6 +481,11 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
 
   Widget _buildJobRequest() {
     final site = _sites[_selectedSiteIndex];
+    final qrPayload = _attendanceQr;
+    final isQrExpired = qrPayload != null && DateTime.now().isAfter(qrPayload.expiresAtDate);
+    final filteredWorkers = _showNoShowOnly
+        ? _assignedWorkers.where((worker) => (worker['noShowCount'] as int? ?? 0) > 0).toList()
+        : _assignedWorkers;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -429,14 +495,12 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
             children: [
               Text(site['address'] as String, style: const TextStyle(color: Color(0xFF475569))),
               const SizedBox(height: 12),
-              Container(
+              MapLauncherCardFlutter(
+                name: site['name'] as String,
+                address: site['address'] as String,
+                latitude: site['lat'] as double?,
+                longitude: site['lng'] as double?,
                 height: 120,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: const Center(child: Text('지도 연동 화면 (네이버/카카오맵)')),
               ),
               const SizedBox(height: 12),
               const Text('인력 요청', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -456,6 +520,80 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
             ],
           ),
           _sectionCard(
+            title: '출근 확인 (QR)',
+            children: [
+              const Text(
+                'QR은 당일 10분 유효이며, 네트워크 연결 상태에서만 확인됩니다.',
+                style: TextStyle(color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: const [
+                  _HintChip(label: '당일 10분 유효'),
+                  _HintChip(label: '네트워크 필요'),
+                  _HintChip(label: '근로자 앱 스캔'),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => _generateAttendanceQr(context, site['name'] as String),
+                  child: Text(qrPayload == null ? 'QR 생성' : 'QR 다시 생성'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (qrPayload == null)
+                Container(
+                  height: 180,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: const Center(
+                    child: Text('QR 생성 후 근로자에게 스캔 요청'),
+                  ),
+                )
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFFFFF),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isQrExpired ? const Color(0xFFFCA5A5) : const Color(0xFFE2E8F0),
+                        ),
+                      ),
+                      child: QrImageView(
+                        data: qrPayload.encode(),
+                        size: 180,
+                        backgroundColor: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      isQrExpired ? '만료됨 · 다시 생성 필요' : '만료 ${formatTime(qrPayload.expiresAtDate)}',
+                      style: TextStyle(
+                        color: isQrExpired ? const Color(0xFFB91C1C) : const Color(0xFF64748B),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '발급 ${formatDateTime(qrPayload.issuedAtDate)}',
+                      style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          _sectionCard(
             title: '요청 내역',
             children: _jobRequests
                 .map(
@@ -467,9 +605,92 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                 )
                 .toList(),
           ),
+          _sectionCard(
+            title: '배정 인력',
+            children: [
+              Wrap(
+                spacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('전체'),
+                    selected: !_showNoShowOnly,
+                    onSelected: (_) => setState(() => _showNoShowOnly = false),
+                    selectedColor: const Color(0xFFDBEAFE),
+                    labelStyle: TextStyle(
+                      color: !_showNoShowOnly ? const Color(0xFF1D4ED8) : const Color(0xFF475569),
+                    ),
+                  ),
+                  ChoiceChip(
+                    label: const Text('노쇼 있음'),
+                    selected: _showNoShowOnly,
+                    onSelected: (_) => setState(() => _showNoShowOnly = true),
+                    selectedColor: const Color(0xFFFEE2E2),
+                    labelStyle: TextStyle(
+                      color: _showNoShowOnly ? const Color(0xFFB91C1C) : const Color(0xFF475569),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (filteredWorkers.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text(
+                    '노쇼 인력이 없습니다.',
+                    style: TextStyle(color: Color(0xFF94A3B8)),
+                  ),
+                ),
+              ...filteredWorkers.map(
+                (worker) => Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              worker['name'] as String,
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${worker['role']} · ${worker['phone']}',
+                              style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _NoShowBadge(count: worker['noShowCount'] as int? ?? 0),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _generateAttendanceQr(BuildContext context, String siteName) async {
+    final connectivity = await Connectivity().checkConnectivity();
+    if (connectivity == ConnectivityResult.none) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('네트워크 연결이 필요합니다.')),
+      );
+      return;
+    }
+    setState(() {
+      _attendanceQr = AttendanceQrPayload.create(siteName: siteName);
+    });
   }
 
   Widget _buildNotices() {
@@ -529,6 +750,54 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
       debugShowCheckedModeBanner: false,
       theme: _theme,
       home: scaffold,
+    );
+  }
+}
+
+class _NoShowBadge extends StatelessWidget {
+  const _NoShowBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasNoShow = count > 0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: hasNoShow ? const Color(0xFFFEE2E2) : const Color(0xFFE2E8F0),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: hasNoShow ? const Color(0xFFFCA5A5) : const Color(0xFFCBD5F5)),
+      ),
+      child: Text(
+        '노쇼 ${count}회',
+        style: TextStyle(
+          color: hasNoShow ? const Color(0xFFB91C1C) : const Color(0xFF475569),
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _HintChip extends StatelessWidget {
+  const _HintChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE2E8F0),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+      ),
     );
   }
 }

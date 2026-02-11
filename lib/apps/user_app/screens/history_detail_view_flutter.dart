@@ -1,7 +1,18 @@
 import 'package:flutter/material.dart';
+import '../widgets/attendance_scan_sheet_flutter.dart';
+import '../../../widgets/attendance_qr_helper.dart';
 
-class HistoryDetailViewFlutter extends StatelessWidget {
+class HistoryDetailViewFlutter extends StatefulWidget {
   const HistoryDetailViewFlutter({super.key});
+
+  @override
+  State<HistoryDetailViewFlutter> createState() => _HistoryDetailViewFlutterState();
+}
+
+class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
+  DateTime? _lastAttendanceAt;
+  String? _lastAttendanceSite;
+  bool _confirmedThisSession = false;
 
   static const List<_HistoryItem> _items = [
     _HistoryItem(
@@ -136,14 +147,72 @@ class HistoryDetailViewFlutter extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: _items
-          .map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildHistoryCard(item),
+      children: [
+        _buildAttendanceCard(context),
+        const SizedBox(height: 16),
+        ..._items.map(
+          (item) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _buildHistoryCard(item),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAttendanceCard(BuildContext context) {
+    final lastChecked = _lastAttendanceAt == null
+        ? '아직 출근 확인 기록이 없습니다.'
+        : '마지막 확인: ${formatTime(_lastAttendanceAt!)} · ${_lastAttendanceSite ?? '-'}';
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFFFF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('출근 확인', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          const Text(
+            '현장 담당자가 제공한 QR을 스캔하면 출근 확인이 완료됩니다.',
+            style: TextStyle(color: Color(0xFF64748B)),
+          ),
+          const SizedBox(height: 10),
+          Text(lastChecked, style: const TextStyle(color: Color(0xFF475569), fontSize: 12)),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => _openAttendanceScanner(context),
+              child: const Text('QR 스캔하기'),
             ),
-          )
-          .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openAttendanceScanner(BuildContext context) async {
+    _confirmedThisSession = false;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AttendanceScanSheetFlutter(
+          onConfirmed: (payload) {
+            _confirmedThisSession = true;
+            setState(() {
+              _lastAttendanceAt = DateTime.now();
+              _lastAttendanceSite = payload.siteName;
+            });
+          },
+        ),
+      ),
+    );
+    if (!_confirmedThisSession || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('출근 확인이 완료되었습니다.')),
     );
   }
 }
