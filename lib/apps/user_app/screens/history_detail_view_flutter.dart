@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../widgets/attendance_scan_sheet_flutter.dart';
 import '../../../widgets/attendance_qr_helper.dart';
 
+enum _HistoryFilter { thisMonth, lastMonth, threeMonths, all }
+
 class HistoryDetailViewFlutter extends StatefulWidget {
   const HistoryDetailViewFlutter({super.key});
 
@@ -13,30 +15,44 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
   DateTime? _lastAttendanceAt;
   String? _lastAttendanceSite;
   bool _confirmedThisSession = false;
+  late final List<_HistoryItem> _items;
+  _HistoryFilter _activeFilter = _HistoryFilter.thisMonth;
 
-  static const List<_HistoryItem> _items = [
-    _HistoryItem(
-      date: '2024-07-20',
-      site: '강남 오피스텔',
-      role: '보통인부',
-      pay: '150,000원',
-      status: '정산 완료',
-    ),
-    _HistoryItem(
-      date: '2024-07-22',
-      site: '홍대 리모델링',
-      role: '조공',
-      pay: '170,000원',
-      status: '지급 대기',
-    ),
-    _HistoryItem(
-      date: '2024-07-25',
-      site: '성수동 카페 공사',
-      role: '기공',
-      pay: '220,000원',
-      status: '정산 완료',
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _items = [
+      _HistoryItem(
+        date: DateTime(now.year, now.month, 2),
+        site: '판교 IT센터',
+        role: '조공',
+        pay: 170000,
+        status: '지급 대기',
+      ),
+      _HistoryItem(
+        date: DateTime(now.year, now.month, 7),
+        site: '서초 아파트 재건축',
+        role: '보통인부',
+        pay: 150000,
+        status: '정산 완료',
+      ),
+      _HistoryItem(
+        date: DateTime(now.year, now.month - 1, 22),
+        site: '성수동 카페 공사',
+        role: '기공',
+        pay: 220000,
+        status: '정산 완료',
+      ),
+      _HistoryItem(
+        date: DateTime(now.year, now.month - 2, 15),
+        site: '홍대 리모델링',
+        role: '조공',
+        pay: 170000,
+        status: '정산 완료',
+      ),
+    ];
+  }
 
   Widget _buildStatusLabel(String status, Color color) {
     return Container(
@@ -55,6 +71,25 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
         ),
       ),
     );
+  }
+
+  String _two(int value) => value.toString().padLeft(2, '0');
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${_two(date.month)}-${_two(date.day)}';
+  }
+
+  String _formatCurrency(int value) {
+    final buffer = StringBuffer();
+    final text = value.toString();
+    for (var i = 0; i < text.length; i += 1) {
+      final indexFromEnd = text.length - i;
+      buffer.write(text[i]);
+      if (indexFromEnd > 1 && indexFromEnd % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+    return buffer.toString();
   }
 
   Widget _buildHistoryCard(_HistoryItem item) {
@@ -89,7 +124,7 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      item.date,
+                      _formatDate(item.date),
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -121,7 +156,7 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
                           ),
                           const TextSpan(text: ' · ', style: TextStyle(color: Color(0xFF64748B))),
                           TextSpan(
-                            text: item.pay,
+                            text: '${_formatCurrency(item.pay)}원',
                             style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
@@ -145,19 +180,123 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
 
   @override
   Widget build(BuildContext context) {
+    final filteredItems = _filteredItems();
+    final totalPay = filteredItems.fold<int>(0, (sum, item) => sum + item.pay);
+    final completedCount = filteredItems.where((item) => item.status == '정산 완료').length;
+    final pendingCount = filteredItems.where((item) => item.status != '정산 완료').length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildAttendanceCard(context),
         const SizedBox(height: 16),
-        ..._items.map(
-          (item) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _buildHistoryCard(item),
-          ),
+        _buildFilterBar(),
+        const SizedBox(height: 12),
+        _buildSummaryCard(
+          totalCount: filteredItems.length,
+          totalPay: totalPay,
+          completedCount: completedCount,
+          pendingCount: pendingCount,
         ),
+        const SizedBox(height: 12),
+        if (filteredItems.isEmpty)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Text('선택한 기간에 정산 내역이 없습니다.', style: TextStyle(color: Color(0xFF94A3B8))),
+            ),
+          )
+        else
+          ...filteredItems.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _buildHistoryCard(item),
+            ),
+          ),
       ],
     );
+  }
+
+  Widget _buildFilterBar() {
+    return Wrap(
+      spacing: 8,
+      children: [
+        _buildFilterChip(_HistoryFilter.thisMonth, '이번달'),
+        _buildFilterChip(_HistoryFilter.lastMonth, '지난달'),
+        _buildFilterChip(_HistoryFilter.threeMonths, '3개월'),
+        _buildFilterChip(_HistoryFilter.all, '전체'),
+      ],
+    );
+  }
+
+  Widget _buildFilterChip(_HistoryFilter filter, String label) {
+    final selected = _activeFilter == filter;
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => setState(() => _activeFilter = filter),
+      selectedColor: const Color(0xFFDBEAFE),
+      labelStyle: TextStyle(
+        color: selected ? const Color(0xFF1D4ED8) : const Color(0xFF475569),
+      ),
+    );
+  }
+
+  Widget _buildSummaryCard({
+    required int totalCount,
+    required int totalPay,
+    required int completedCount,
+    required int pendingCount,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFFFF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('정산 요약', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          _InfoRow(label: '총 근무일', value: '$totalCount일'),
+          _InfoRow(label: '총 금액', value: '${_formatCurrency(totalPay)}원'),
+          _InfoRow(label: '정산 완료', value: '$completedCount건'),
+          _InfoRow(label: '지급 대기', value: '$pendingCount건'),
+        ],
+      ),
+    );
+  }
+
+  List<_HistoryItem> _filteredItems() {
+    final now = DateTime.now();
+    DateTime? start;
+    DateTime? end;
+    switch (_activeFilter) {
+      case _HistoryFilter.thisMonth:
+        start = DateTime(now.year, now.month, 1);
+        end = DateTime(now.year, now.month + 1, 0);
+        break;
+      case _HistoryFilter.lastMonth:
+        start = DateTime(now.year, now.month - 1, 1);
+        end = DateTime(now.year, now.month, 0);
+        break;
+      case _HistoryFilter.threeMonths:
+        start = DateTime(now.year, now.month - 2, 1);
+        end = DateTime(now.year, now.month + 1, 0);
+        break;
+      case _HistoryFilter.all:
+        start = null;
+        end = null;
+        break;
+    }
+    final filtered = _items.where((item) {
+      if (start != null && item.date.isBefore(start)) return false;
+      if (end != null && item.date.isAfter(end)) return false;
+      return true;
+    }).toList();
+    filtered.sort((a, b) => b.date.compareTo(a.date));
+    return filtered;
   }
 
   Widget _buildAttendanceCard(BuildContext context) {
@@ -217,6 +356,29 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
   }
 }
 
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(label, style: const TextStyle(color: Color(0xFF64748B))),
+          ),
+          Expanded(child: Text(value, style: const TextStyle(color: Color(0xFF0F172A)))),
+        ],
+      ),
+    );
+  }
+}
+
 class _HistoryItem {
   const _HistoryItem({
     required this.date,
@@ -226,9 +388,9 @@ class _HistoryItem {
     required this.status,
   });
 
-  final String date;
+  final DateTime date;
   final String site;
   final String role;
-  final String pay;
+  final int pay;
   final String status;
 }

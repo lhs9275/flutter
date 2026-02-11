@@ -4,12 +4,14 @@ import 'icons/loading_spinner_flutter.dart';
 class LoginFlutter extends StatelessWidget {
   const LoginFlutter({
     super.key,
+    required this.phoneController,
     required this.rememberMe,
     required this.onRememberChanged,
     required this.onContinue,
     this.isLoading = false,
   });
 
+  final TextEditingController phoneController;
   final bool rememberMe;
   final ValueChanged<bool> onRememberChanged;
   final VoidCallback onContinue;
@@ -24,6 +26,7 @@ class LoginFlutter extends StatelessWidget {
         const Text('비밀번호 없이 휴대폰 번호로 간편하게 시작하세요.', style: TextStyle(color: Color(0xFF475569))),
         const SizedBox(height: 16),
         TextField(
+          controller: phoneController,
           keyboardType: TextInputType.phone,
           decoration: const InputDecoration(
             labelText: '휴대폰 번호',

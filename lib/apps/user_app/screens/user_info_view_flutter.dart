@@ -3,9 +3,15 @@ import 'package:flutter/material.dart';
 class UserInfoViewFlutter extends StatelessWidget {
   const UserInfoViewFlutter({
     super.key,
+    required this.name,
+    required this.phone,
+    required this.regions,
     required this.onEditProfile,
   });
 
+  final String name;
+  final String phone;
+  final List<String> regions;
   final VoidCallback onEditProfile;
 
   @override
@@ -24,14 +30,14 @@ class UserInfoViewFlutter extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('내 정보', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8),
-                    Text('이름: 김테스트'),
-                    Text('휴대폰: 010-1111-2222'),
-                    Text('선호 지역: 서울 강남구'),
+                    const Text('내 정보', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text('이름: $name'),
+                    Text('휴대폰: $phone'),
+                    Text('선호 지역: ${regions.isEmpty ? '-' : regions.join(', ')}'),
                   ],
                 ),
               ),

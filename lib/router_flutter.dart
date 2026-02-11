@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -43,8 +45,12 @@ class _RouterFlutterState extends State<RouterFlutter> {
   bool _rememberMe = true;
   bool _isAdminPanelOpen = false;
   final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _otpController = TextEditingController();
+  final Random _random = Random();
+  String? _sentOtp;
   UserView _userInitialView = UserView.sites;
   EmployerView _employerInitialView = EmployerView.dashboard;
+  String? _userInitialPhone;
 
   final Map<Role, RoleConfig> _roleConfig = const {
     Role.user: RoleConfig(
@@ -64,6 +70,7 @@ class _RouterFlutterState extends State<RouterFlutter> {
   @override
   void dispose() {
     _phoneController.dispose();
+    _otpController.dispose();
     super.dispose();
   }
 
@@ -72,6 +79,8 @@ class _RouterFlutterState extends State<RouterFlutter> {
     _phoneToVerify = null;
     _authRole = null;
     _phoneController.clear();
+    _otpController.clear();
+    _sentOtp = null;
   }
 
   void _handleRoleChange(Role role) {
@@ -92,10 +101,16 @@ class _RouterFlutterState extends State<RouterFlutter> {
     return normalized == testHint;
   }
 
-  void _openRoleApp({required Role role, required bool register}) {
+  void _openRoleApp({
+    required Role role,
+    required bool register,
+    String? phone,
+  }) {
+    final normalized = phone == null ? '' : _normalizePhone(phone);
     setState(() {
       if (role == Role.user) {
         _userInitialView = register ? UserView.register : UserView.sites;
+        _userInitialPhone = normalized.isEmpty ? null : normalized;
         _view = RouterView.user;
       } else {
         _employerInitialView = register ? EmployerView.register : EmployerView.dashboard;
@@ -110,26 +125,44 @@ class _RouterFlutterState extends State<RouterFlutter> {
     final raw = _phoneController.text.trim();
     final normalized = _normalizePhone(raw);
     if (normalized.isEmpty || !_isKnownRolePhone(_activeRole, normalized)) {
-      _openRoleApp(role: _activeRole, register: true);
+      _openRoleApp(role: _activeRole, register: true, phone: normalized);
       return;
     }
+    _phoneController.text = normalized;
+    _phoneToVerify = normalized;
+    _authRole = _activeRole;
+    _sendOtp();
+  }
+
+  void _handlePhoneAuthSuccess(BuildContext context) {
+    final input = _otpController.text.trim();
+    if (_sentOtp == null || input != _sentOtp) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('인증번호가 올바르지 않습니다.')),
+      );
+      return;
+    }
+    final role = _authRole;
+    if (role == null) return;
+    _openRoleApp(role: role, register: false, phone: _phoneToVerify);
+  }
+
+  void _sendOtp() {
+    final code = (_random.nextInt(900000) + 100000).toString();
     setState(() {
-      _phoneController.text = normalized;
-      _phoneToVerify = normalized;
-      _authRole = _activeRole;
+      _sentOtp = code;
+      _otpController.clear();
       _authStep = AuthStep.verify;
     });
   }
 
-  void _handlePhoneAuthSuccess() {
-    final role = _authRole;
-    if (role == null) return;
-    _openRoleApp(role: role, register: false);
-  }
-
   void _handlePhoneRegister() {
     final role = _authRole ?? _activeRole;
-    _openRoleApp(role: role, register: true);
+    _openRoleApp(
+      role: role,
+      register: true,
+      phone: _phoneToVerify ?? _phoneController.text,
+    );
   }
 
   void _handleBackToLanding() {
@@ -137,6 +170,7 @@ class _RouterFlutterState extends State<RouterFlutter> {
       _view = RouterView.landing;
       _userInitialView = UserView.sites;
       _employerInitialView = EmployerView.dashboard;
+      _userInitialPhone = null;
       _resetAuthFlow();
       _isAdminPanelOpen = false;
     });
@@ -293,7 +327,10 @@ class _RouterFlutterState extends State<RouterFlutter> {
       child: AuthenticationFlutter(
         phone: phone,
         onBack: () => setState(() => _resetAuthFlow()),
-        onVerified: _handlePhoneAuthSuccess,
+        codeController: _otpController,
+        debugCode: _sentOtp,
+        onResend: _sendOtp,
+        onVerified: () => _handlePhoneAuthSuccess(context),
         onRegister: _handlePhoneRegister,
       ),
     );
@@ -418,6 +455,7 @@ class _RouterFlutterState extends State<RouterFlutter> {
           UserAppFlutter(
             embedded: true,
             initialView: _userInitialView,
+            initialPhone: _userInitialPhone,
           ),
         );
       case RouterView.employer:

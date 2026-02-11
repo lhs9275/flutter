@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../data/mock_backend.dart';
 import 'screens/admin_login_flutter.dart';
 import 'screens/daily_work_management_flutter.dart';
+import 'screens/job_request_management_flutter.dart';
 import 'screens/member_management_flutter.dart';
 import 'screens/notice_management_flutter.dart';
 import 'screens/permission_management_flutter.dart';
@@ -13,7 +15,7 @@ void main() {
   runApp(const AdminAppFlutter());
 }
 
-enum AdminView { members, sites, dailyWork, permissions, wage, notices }
+enum AdminView { members, sites, jobRequests, dailyWork, permissions, wage, notices }
 
 class AdminAppFlutter extends StatefulWidget {
   const AdminAppFlutter({
@@ -34,7 +36,7 @@ class AdminAppFlutter extends StatefulWidget {
 class _AdminAppFlutterState extends State<AdminAppFlutter> {
   late bool _isAuthenticated;
   late AdminView _view;
-  Map<String, String>? _selectedMember;
+  Map<String, dynamic>? _selectedMember;
 
   final ThemeData _theme = ThemeData(
     brightness: Brightness.light,
@@ -49,17 +51,13 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
     useMaterial3: false,
   );
 
-  final List<Map<String, String>> _members = const [
-    {'name': '김테스트', 'phone': '010-1111-2222', 'status': '활성'},
-    {'name': '이철수', 'phone': '010-8000-0001', 'status': '대기'},
-    {'name': '박지영', 'phone': '010-8000-0002', 'status': '활성'},
+  final List<Map<String, dynamic>> _members = [
+    {'name': '김테스트', 'phone': '010-1111-2222', 'status': '활성', 'noShowCount': 0},
+    {'name': '이철수', 'phone': '010-8000-0001', 'status': '대기', 'noShowCount': 2},
+    {'name': '박지영', 'phone': '010-8000-0002', 'status': '활성', 'noShowCount': 1},
   ];
 
-  final List<Map<String, String>> _sites = const [
-    {'name': '서초 아파트 재건축', 'status': '승인됨'},
-    {'name': '홍대 리모델링', 'status': '승인 대기'},
-    {'name': '판교 IT센터', 'status': '반려'},
-  ];
+  List<Map<String, dynamic>> get _sites => MockBackend.sites;
 
   @override
   void initState() {
@@ -74,6 +72,8 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
         return '회원 관리';
       case AdminView.sites:
         return '현장 관리';
+      case AdminView.jobRequests:
+        return '공고 요청';
       case AdminView.dailyWork:
         return '일일 작업';
       case AdminView.permissions:
@@ -103,6 +103,7 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
           ),
           _drawerItem(AdminView.members, Icons.people, '회원 관리'),
           _drawerItem(AdminView.sites, Icons.location_city, '현장 관리'),
+          _drawerItem(AdminView.jobRequests, Icons.assignment, '공고 요청'),
           _drawerItem(AdminView.dailyWork, Icons.calendar_today, '일일 작업'),
           _drawerItem(AdminView.permissions, Icons.security, '권한 관리'),
           _drawerItem(AdminView.wage, Icons.payments, '임금 관리'),
@@ -135,9 +136,26 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
           selectedMember: _selectedMember,
           onSelectMember: (member) => setState(() => _selectedMember = member),
           onBack: () => setState(() => _selectedMember = null),
+          onAdjustNoShow: _adjustNoShowCount,
+          onResetNoShow: _resetNoShowCount,
         );
       case AdminView.sites:
-        return SiteManagementFlutter(sites: _sites);
+        return SiteManagementFlutter(
+          sites: _sites,
+          onVerify: _verifySitePhone,
+          onApprove: _approveSite,
+          onReject: _rejectSite,
+        );
+      case AdminView.jobRequests:
+        return JobRequestManagementFlutter(
+          requests: MockBackend.jobRequests,
+          onApprove: _approveJobRequest,
+          onReject: _rejectJobRequest,
+          onEdit: _editJobRequest,
+          onAssignPriority: _assignPriorityWorker,
+          onAssignSequence: _assignSequenceWorker,
+          onResetAssignments: _resetAssignments,
+        );
       case AdminView.dailyWork:
         return const DailyWorkManagementFlutter();
       case AdminView.permissions:
@@ -147,6 +165,79 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
       case AdminView.notices:
         return const NoticeManagementFlutter();
     }
+  }
+
+  void _adjustNoShowCount(String phone, int delta) {
+    setState(() {
+      final index = _members.indexWhere((member) => member['phone'] == phone);
+      if (index == -1) return;
+      final current = _members[index]['noShowCount'] as int? ?? 0;
+      final next = current + delta;
+      final clamped = next < 0 ? 0 : next;
+      _members[index] = {..._members[index], 'noShowCount': clamped};
+      if (_selectedMember != null && _selectedMember!['phone'] == phone) {
+        _selectedMember = _members[index];
+      }
+    });
+  }
+
+  void _resetNoShowCount(String phone) {
+    setState(() {
+      final index = _members.indexWhere((member) => member['phone'] == phone);
+      if (index == -1) return;
+      _members[index] = {..._members[index], 'noShowCount': 0};
+      if (_selectedMember != null && _selectedMember!['phone'] == phone) {
+        _selectedMember = _members[index];
+      }
+    });
+  }
+
+  void _verifySitePhone(String siteId) {
+    setState(() => MockBackend.verifySitePhone(siteId));
+  }
+
+  void _approveSite(String siteId) {
+    setState(() => MockBackend.updateSiteStatus(siteId, SiteStatus.approved, phoneVerified: true));
+  }
+
+  void _rejectSite(String siteId, String reason) {
+    setState(() => MockBackend.updateSiteStatus(siteId, SiteStatus.rejected, reason: reason));
+  }
+
+  void _approveJobRequest(String jobId) {
+    setState(() => MockBackend.updateJobRequestStatus(jobId, JobRequestStatus.approved));
+  }
+
+  void _rejectJobRequest(String jobId, String reason) {
+    setState(() => MockBackend.updateJobRequestStatus(jobId, JobRequestStatus.rejected, reason: reason));
+  }
+
+  void _editJobRequest(String jobId, Map<String, dynamic> updates) {
+    setState(() => MockBackend.updateJobRequest(jobId, updates));
+  }
+
+  void _assignPriorityWorker(String jobId) {
+    final assigned = MockBackend.assignWorker(jobId, priority: true);
+    setState(() {});
+    if (assigned == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('배정 가능한 인력이 없습니다.')),
+      );
+    }
+  }
+
+  void _assignSequenceWorker(String jobId) {
+    final assigned = MockBackend.assignWorker(jobId, priority: false);
+    setState(() {});
+    if (assigned == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('배정 가능한 인력이 없습니다.')),
+      );
+    }
+  }
+
+  void _resetAssignments(String jobId) {
+    setState(() => MockBackend.resetAssignments(jobId));
   }
 
   Widget _buildHome() {

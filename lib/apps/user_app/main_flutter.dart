@@ -1,5 +1,9 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
+import '../../data/mock_backend.dart';
+import 'models/application_record.dart';
 import 'screens/calendar_view_flutter.dart';
 import 'screens/game_center_flutter.dart';
 import 'screens/history_detail_view_flutter.dart';
@@ -27,10 +31,12 @@ class UserAppFlutter extends StatefulWidget {
     super.key,
     this.embedded = false,
     this.initialView = UserView.login,
+    this.initialPhone,
   });
 
   final bool embedded;
   final UserView initialView;
+  final String? initialPhone;
 
   @override
   State<UserAppFlutter> createState() => _UserAppFlutterState();
@@ -42,15 +48,23 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
   bool _rememberMe = true;
   Map<String, dynamic>? _selectedSite;
   String? _selectedRegionFilter;
+  bool _showAllRegions = false;
   final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _otpController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _idNumberController = TextEditingController();
   final TextEditingController _nationalityController = TextEditingController();
-  final TextEditingController _regionController = TextEditingController();
+  final TextEditingController _regionInputController = TextEditingController();
   final TextEditingController _bankController = TextEditingController();
   final TextEditingController _accountController = TextEditingController();
   final TextEditingController _ownerController = TextEditingController();
   String _gender = 'male';
+  String? _sentOtp;
+  final Set<String> _verifiedPhones = {};
+  final Set<String> _registeredPhones = {'01011112222'};
+  final List<String> _preferredRegions = [];
+  final Map<String, ApplicationRecord> _applications = {};
+  final Random _random = Random();
 
   static const Color _accent = Color(0xFF6366F1);
 
@@ -67,52 +81,26 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     useMaterial3: false,
   );
 
-  final List<Map<String, dynamic>> _sites = const [
-    {
-      'name': '서초 아파트 재건축',
-      'address': '서울 서초구 반포동',
-      'region': '서울',
-      'type': '보통인부',
-      'date': '2024-08-01',
-      'pay': '150,000',
-      'lat': 37.5036,
-      'lng': 127.0056,
-    },
-    {
-      'name': '판교 IT센터',
-      'address': '경기 성남시 분당구',
-      'region': '경기',
-      'type': '조공',
-      'date': '2024-08-02',
-      'pay': '170,000',
-      'lat': 37.3946,
-      'lng': 127.1112,
-    },
-    {
-      'name': '성수동 카페 리모델링',
-      'address': '서울 성동구 성수동',
-      'region': '서울',
-      'type': '기공',
-      'date': '2024-08-03',
-      'pay': '220,000',
-      'lat': 37.5448,
-      'lng': 127.0564,
-    },
-  ];
+  List<Map<String, dynamic>> get _sites => MockBackend.approvedJobPosts();
 
   @override
   void initState() {
     super.initState();
     _view = widget.initialView;
+    final phone = widget.initialPhone?.trim() ?? '';
+    if (phone.isNotEmpty) {
+      _phoneController.text = phone;
+    }
   }
 
   @override
   void dispose() {
     _phoneController.dispose();
+    _otpController.dispose();
     _nameController.dispose();
     _idNumberController.dispose();
     _nationalityController.dispose();
-    _regionController.dispose();
+    _regionInputController.dispose();
     _bankController.dispose();
     _accountController.dispose();
     _ownerController.dispose();
@@ -124,35 +112,70 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
   }
 
   bool _isKnownUser(String phone) {
-    return _normalizePhone(phone) == '01011112222';
+    return _registeredPhones.contains(_normalizePhone(phone));
   }
 
-  void _handleLogin() {
+  void _handleLogin(BuildContext context) {
     final raw = _phoneController.text.trim();
     final normalized = _normalizePhone(raw);
     if (normalized.isEmpty) {
-      setState(() {
-        _view = UserView.register;
-      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('휴대폰 번호를 입력해주세요.')),
+      );
       return;
     }
     _phoneController.text = normalized;
+    if (_verifiedPhones.contains(normalized)) {
+      setState(() {
+        _view = _isKnownUser(normalized) ? UserView.sites : UserView.register;
+      });
+      return;
+    }
+    _sendOtp(normalized);
+  }
+
+  void _sendOtp(String phone) {
+    final code = (_random.nextInt(900000) + 100000).toString();
     setState(() {
-      _view = _isKnownUser(normalized) ? UserView.authenticate : UserView.register;
+      _sentOtp = code;
+      _otpController.clear();
+      _view = UserView.authenticate;
     });
   }
 
-  void _handleAuthSuccess() {
+  void _handleAuthSuccess(BuildContext context) {
+    final input = _otpController.text.trim();
+    final expected = _sentOtp;
+    if (expected == null || input != expected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('인증번호가 올바르지 않습니다.')),
+      );
+      return;
+    }
     final phone = _phoneController.text.trim();
+    _verifiedPhones.add(phone);
     setState(() {
       _view = _isKnownUser(phone) ? UserView.sites : UserView.register;
     });
   }
 
   void _handleRegister() {
-    setState(() {
-      _view = UserView.sites;
-    });
+    final phone = _normalizePhone(_phoneController.text.trim());
+    if (phone.isNotEmpty) {
+      _registeredPhones.add(phone);
+    }
+    setState(() => _view = UserView.sites);
+  }
+
+  String _currentUserName() {
+    if (_isKnownUser(_phoneController.text)) return '김테스트';
+    final name = _nameController.text.trim();
+    return name.isEmpty ? '근로자' : name;
+  }
+
+  String _currentUserPhone() {
+    final normalized = _normalizePhone(_phoneController.text.trim());
+    return normalized.isEmpty ? '00000000000' : normalized;
   }
 
   String _formatPhone(String phone) {
@@ -162,6 +185,115 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
       return '${normalized.substring(0, 3)}-${normalized.substring(3, 6)}-${normalized.substring(6)}';
     }
     return '${normalized.substring(0, 3)}-${normalized.substring(3, 7)}-${normalized.substring(7)}';
+  }
+
+  bool _addPreferredRegion(String value) {
+    final region = value.trim();
+    if (region.isEmpty) return false;
+    if (_preferredRegions.contains(region)) return false;
+    setState(() {
+      _preferredRegions.add(region);
+      _regionInputController.clear();
+    });
+    return true;
+  }
+
+  void _removePreferredRegion(int index) {
+    setState(() {
+      if (index < 0 || index >= _preferredRegions.length) return;
+      _preferredRegions.removeAt(index);
+    });
+  }
+
+  void _movePreferredRegion(int index, int delta) {
+    final nextIndex = index + delta;
+    if (nextIndex < 0 || nextIndex >= _preferredRegions.length) return;
+    setState(() {
+      final region = _preferredRegions.removeAt(index);
+      _preferredRegions.insert(nextIndex, region);
+    });
+  }
+
+  ApplicationRecord? _applicationForSite(Map<String, dynamic> site) {
+    final id = site['id'] as String?;
+    if (id == null) return null;
+    return _applications[id];
+  }
+
+  Future<void> _applyToSite(BuildContext context, Map<String, dynamic> site) async {
+    final id = site['id'] as String?;
+    if (id == null) return;
+    final record = _applications[id];
+    if (record != null && record.status == ApplicationStatus.confirmed) return;
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('지원하기'),
+        content: Text('${site['name']} 현장에 지원하시겠습니까?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('취소')),
+          ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('지원')),
+        ],
+      ),
+    );
+    if (approved != true) return;
+    setState(() {
+      _applications[id] = ApplicationRecord(
+        status: ApplicationStatus.applied,
+        appliedAt: DateTime.now(),
+      );
+    });
+    MockBackend.addApplication(
+      jobId: id,
+      name: _currentUserName(),
+      phone: _currentUserPhone(),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('지원이 완료되었습니다.')),
+    );
+  }
+
+  Future<void> _cancelApplication(BuildContext context, Map<String, dynamic> site) async {
+    final id = site['id'] as String?;
+    if (id == null) return;
+    final record = _applications[id];
+    if (record == null || record.status == ApplicationStatus.confirmed) return;
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('지원 취소'),
+        content: Text('${site['name']} 지원을 취소하시겠습니까?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('닫기')),
+          ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('취소하기')),
+        ],
+      ),
+    );
+    if (approved != true) return;
+    setState(() {
+      _applications.remove(id);
+    });
+    MockBackend.cancelApplication(jobId: id, phone: _currentUserPhone());
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('지원이 취소되었습니다.')),
+    );
+  }
+
+  void _confirmApplicationDemo(BuildContext context, Map<String, dynamic> site) {
+    final id = site['id'] as String?;
+    if (id == null) return;
+    final record = _applications[id];
+    if (record == null) return;
+    if (record.status == ApplicationStatus.confirmed) return;
+    setState(() {
+      _applications[id] = record.copyWith(
+        status: ApplicationStatus.confirmed,
+        confirmedAt: DateTime.now(),
+      );
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('확정 처리되었습니다.')),
+    );
   }
 
   PreferredSizeWidget? _buildAppBar() {
@@ -182,6 +314,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
           onLogout: () => setState(() {
             _phoneController.clear();
             _selectedRegionFilter = null;
+            _showAllRegions = false;
             _view = UserView.login;
           }),
         );
@@ -216,34 +349,44 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
   }
 
   Widget _buildSitesTabContent() {
-    final preferredRegion =
-        _regionController.text.trim().isEmpty ? null : _regionController.text.trim();
-    final availableRegions = _sites
+    final preferredRegions = List<String>.from(_preferredRegions);
+    final sites = _sites;
+    final availableRegions = sites
         .map((site) => site['region'] as String?)
         .whereType<String>()
         .toSet()
         .toList()
       ..sort();
-    if (preferredRegion != null && !availableRegions.contains(preferredRegion)) {
-      availableRegions.insert(0, preferredRegion);
+    if (preferredRegions.isNotEmpty) {
+      for (final region in preferredRegions.reversed) {
+        if (!availableRegions.contains(region)) {
+          availableRegions.insert(0, region);
+        }
+      }
     }
     final visibleSites = _filterSitesByRegion(
-      preferredRegion: preferredRegion,
+      sites: sites,
+      preferredRegions: preferredRegions,
       selectedRegion: _selectedRegionFilter,
+      showAllRegions: _showAllRegions,
     );
     switch (_tab) {
       case SiteTab.list:
         return SiteListFlutter(
           sites: visibleSites,
-          preferredRegion: preferredRegion,
+          preferredRegions: preferredRegions,
           selectedRegion: _selectedRegionFilter,
           availableRegions: availableRegions,
+          showAllRegions: _showAllRegions,
+          onToggleShowAll: (value) => setState(() => _showAllRegions = value),
           onRegionSelected: (region) => setState(() => _selectedRegionFilter = region),
           onViewDetail: (site) => setState(() {
             _selectedSite = site;
             _view = UserView.siteDetail;
           }),
-          onApply: (_) {},
+          onApply: (site) => _applyToSite(context, site),
+          onCancel: (site) => _cancelApplication(context, site),
+          applications: _applications,
         );
       case SiteTab.calendar:
         return const CalendarViewFlutter();
@@ -255,7 +398,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
               ? '김테스트'
               : (_nameController.text.trim().isEmpty ? '사용자' : _nameController.text.trim()),
           phone: _phoneController.text.isEmpty ? '-' : _formatPhone(_phoneController.text),
-          region: _regionController.text.trim().isEmpty ? '-' : _regionController.text.trim(),
+          regions: preferredRegions,
           onEditProfile: () => setState(() => _view = UserView.editProfile),
         );
       case SiteTab.notices:
@@ -266,17 +409,33 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
   }
 
   List<Map<String, dynamic>> _filterSitesByRegion({
-    required String? preferredRegion,
+    required List<Map<String, dynamic>> sites,
+    required List<String> preferredRegions,
     required String? selectedRegion,
+    required bool showAllRegions,
   }) {
-    final sorted = [..._sites];
+    final sorted = [...sites];
     if (selectedRegion != null) {
       return sorted.where((site) => site['region'] == selectedRegion).toList();
     }
-    if (preferredRegion == null) return sorted;
-    final preferredSites = sorted.where((site) => site['region'] == preferredRegion).toList();
-    final otherSites = sorted.where((site) => site['region'] != preferredRegion).toList();
-    return [...preferredSites, ...otherSites];
+    if (preferredRegions.isEmpty) return sorted;
+    if (!showAllRegions) {
+      return sorted.where((site) => preferredRegions.contains(site['region'])).toList();
+    }
+    final regionOrder = <String, int>{
+      for (var i = 0; i < preferredRegions.length; i += 1) preferredRegions[i]: i,
+    };
+    sorted.sort((a, b) {
+      final aRegion = a['region']?.toString() ?? '';
+      final bRegion = b['region']?.toString() ?? '';
+      final aRank = regionOrder[aRegion] ?? 9999;
+      final bRank = regionOrder[bRegion] ?? 9999;
+      if (aRank != bRank) return aRank.compareTo(bRank);
+      final aDate = a['date']?.toString() ?? '';
+      final bDate = b['date']?.toString() ?? '';
+      return aDate.compareTo(bDate);
+    });
+    return sorted;
   }
 
   Widget _buildBody() {
@@ -293,7 +452,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
                 phoneController: _phoneController,
                 rememberMe: _rememberMe,
                 onRememberChanged: (value) => setState(() => _rememberMe = value),
-                onContinue: _handleLogin,
+                onContinue: () => _handleLogin(context),
               ),
               const SizedBox(height: 8),
               const Text('테스트 계정: 01011112222', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
@@ -307,7 +466,10 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
           AuthenticationFlutter(
             phone: _phoneController.text,
             onBack: () => setState(() => _view = UserView.login),
-            onVerified: _handleAuthSuccess,
+            codeController: _otpController,
+            debugCode: _sentOtp,
+            onResend: () => _sendOtp(_normalizePhone(_phoneController.text)),
+            onVerified: () => _handleAuthSuccess(context),
             onRegister: () => setState(() => _view = UserView.register),
           ),
         );
@@ -318,7 +480,12 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
             nameController: _nameController,
             idNumberController: _idNumberController,
             nationalityController: _nationalityController,
-            regionController: _regionController,
+            regionInputController: _regionInputController,
+            preferredRegions: _preferredRegions,
+            onAddRegion: _addPreferredRegion,
+            onRemoveRegion: _removePreferredRegion,
+            onMoveRegionUp: (index) => _movePreferredRegion(index, -1),
+            onMoveRegionDown: (index) => _movePreferredRegion(index, 1),
             bankController: _bankController,
             accountController: _accountController,
             ownerController: _ownerController,
@@ -333,11 +500,21 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
           child: _buildSitesTabContent(),
         );
       case UserView.siteDetail:
+        final sites = _sites;
+        final selected = _selectedSite ?? (sites.isNotEmpty ? sites.first : null);
+        if (selected == null) {
+          return const Center(
+            child: Text('노출된 공고가 없습니다.', style: TextStyle(color: Color(0xFF64748B))),
+          );
+        }
         return Padding(
           padding: const EdgeInsets.all(16),
           child: SiteDetailFlutter(
-            site: _selectedSite ?? _sites.first,
-            onApply: () {},
+            site: selected,
+            application: _applicationForSite(selected),
+            onApply: () => _applyToSite(context, selected),
+            onCancel: () => _cancelApplication(context, selected),
+            onConfirmDemo: () => _confirmApplicationDemo(context, selected),
           ),
         );
       case UserView.editProfile:
@@ -346,6 +523,12 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
           child: EditProfileFormFlutter(
             onCancel: () => setState(() => _view = UserView.sites),
             onSave: () => setState(() => _view = UserView.sites),
+            preferredRegions: _preferredRegions,
+            regionInputController: _regionInputController,
+            onAddRegion: _addPreferredRegion,
+            onRemoveRegion: _removePreferredRegion,
+            onMoveRegionUp: (index) => _movePreferredRegion(index, -1),
+            onMoveRegionDown: (index) => _movePreferredRegion(index, 1),
           ),
         );
     }

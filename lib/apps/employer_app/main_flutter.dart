@@ -1,6 +1,7 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import '../../data/mock_backend.dart';
 import '../../../widgets/attendance_qr_helper.dart';
 import '../../../widgets/map_launcher_card_flutter.dart';
 
@@ -9,8 +10,6 @@ void main() {
 }
 
 enum EmployerView { login, auth, register, dashboard, siteRegister, jobRequest, notices }
-
-enum SiteStatus { approved, pending, rejected }
 
 class EmployerAppFlutter extends StatefulWidget {
   const EmployerAppFlutter({
@@ -33,6 +32,24 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
   bool _showNoShowOnly = false;
   AttendanceQrPayload? _attendanceQr;
 
+  final TextEditingController _siteNameController = TextEditingController();
+  final TextEditingController _siteAddressController = TextEditingController();
+  String _siteJobType = '조공';
+  final TextEditingController _bizNameController = TextEditingController();
+  final TextEditingController _bizNumberController = TextEditingController();
+  final TextEditingController _representativeController = TextEditingController();
+  final TextEditingController _bizPhoneController = TextEditingController();
+  final TextEditingController _agentNameController = TextEditingController();
+  final TextEditingController _agentPhoneController = TextEditingController();
+
+  final TextEditingController _requestDateController = TextEditingController();
+  final TextEditingController _requestTimeController = TextEditingController();
+  final TextEditingController _requestCountController = TextEditingController();
+  final TextEditingController _requestRateController = TextEditingController();
+  final TextEditingController _requestMeetingController = TextEditingController();
+  final TextEditingController _requestNotesController = TextEditingController();
+  final TextEditingController _requestMemoController = TextEditingController();
+
   final ThemeData _theme = ThemeData(
     brightness: Brightness.light,
     scaffoldBackgroundColor: const Color(0xFFF1F5F9),
@@ -46,35 +63,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     useMaterial3: false,
   );
 
-  final List<Map<String, dynamic>> _sites = [
-    {
-      'name': '서초 아파트 재건축',
-      'address': '서울 서초구 반포동',
-      'jobType': '조공',
-      'status': SiteStatus.approved,
-      'createdAt': '2024-07-25 10:00',
-      'lat': 37.5036,
-      'lng': 127.0056,
-    },
-    {
-      'name': '판교 IT센터',
-      'address': '경기 성남시 분당구',
-      'jobType': '보통인부',
-      'status': SiteStatus.pending,
-      'createdAt': '2024-08-01 09:20',
-      'lat': 37.3946,
-      'lng': 127.1112,
-    },
-    {
-      'name': '홍대 리모델링',
-      'address': '서울 마포구',
-      'jobType': '기공',
-      'status': SiteStatus.rejected,
-      'createdAt': '2024-08-03 14:10',
-      'lat': 37.5563,
-      'lng': 126.9227,
-    },
-  ];
+  List<Map<String, dynamic>> get _sites => MockBackend.sites;
 
   final List<Map<String, String>> _notices = const [
     {
@@ -89,22 +78,9 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     },
   ];
 
-  final List<Map<String, String>> _jobRequests = const [
-    {
-      'date': '2024-08-06',
-      'jobType': '조공',
-      'count': '3',
-      'rate': '150,000',
-      'status': '승인 대기',
-    },
-    {
-      'date': '2024-08-07',
-      'jobType': '보통인부',
-      'count': '5',
-      'rate': '160,000',
-      'status': '배정 완료',
-    },
-  ];
+  List<Map<String, dynamic>> _jobRequestsForSite(String siteId) {
+    return MockBackend.jobRequestsForSite(siteId);
+  }
 
   final List<Map<String, dynamic>> _assignedWorkers = const [
     {'name': '김근로', 'role': '조공', 'phone': '010-1234-5678', 'noShowCount': 0},
@@ -112,10 +88,83 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     {'name': '박기공', 'role': '기공', 'phone': '010-4444-5555', 'noShowCount': 3},
   ];
 
+  static const List<Map<String, String>> _laborOptions = [
+    {'value': '1.0', 'label': '1.0'},
+    {'value': '0.5', 'label': '조퇴 0.5'},
+    {'value': '1.5', 'label': '야근 1.5'},
+    {'value': 'custom', 'label': '기타'},
+  ];
+
+  final List<Map<String, dynamic>> _todayWorkers = [
+    {
+      'name': '김근로',
+      'role': '조공',
+      'phone': '010-1234-5678',
+      'checkedInAt': '07:52',
+      'labor': '1.0',
+      'customLabor': '',
+      'attitude': 0,
+      'approved': false,
+    },
+    {
+      'name': '이인부',
+      'role': '보통인부',
+      'phone': '010-2222-3333',
+      'checkedInAt': '08:04',
+      'labor': '0.5',
+      'customLabor': '',
+      'attitude': 0,
+      'approved': false,
+    },
+    {
+      'name': '박기공',
+      'role': '기공',
+      'phone': '010-4444-5555',
+      'checkedInAt': '08:12',
+      'labor': 'custom',
+      'customLabor': '1.2',
+      'attitude': 0,
+      'approved': false,
+    },
+  ];
+
+  late final List<TextEditingController> _customLaborControllers;
+
   @override
   void initState() {
     super.initState();
     _view = widget.initialView;
+    _customLaborControllers = _todayWorkers
+        .map((worker) => TextEditingController(text: worker['customLabor'] as String? ?? ''))
+        .toList();
+    _requestDateController.text = _formatDate(DateTime.now());
+    _requestTimeController.text = '07:30 ~ 17:00';
+    _requestCountController.text = '1';
+    _requestRateController.text = '150,000';
+    _requestMeetingController.text = '현장 정문';
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _customLaborControllers) {
+      controller.dispose();
+    }
+    _siteNameController.dispose();
+    _siteAddressController.dispose();
+    _bizNameController.dispose();
+    _bizNumberController.dispose();
+    _representativeController.dispose();
+    _bizPhoneController.dispose();
+    _agentNameController.dispose();
+    _agentPhoneController.dispose();
+    _requestDateController.dispose();
+    _requestTimeController.dispose();
+    _requestCountController.dispose();
+    _requestRateController.dispose();
+    _requestMeetingController.dispose();
+    _requestNotesController.dispose();
+    _requestMemoController.dispose();
+    super.dispose();
   }
 
   PreferredSizeWidget? _buildAppBar() {
@@ -312,11 +361,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
             final index = entry.key;
             final site = entry.value;
             final status = site['status'] as SiteStatus;
-            final statusText = status == SiteStatus.approved
-                ? '승인됨'
-                : status == SiteStatus.rejected
-                    ? '반려됨'
-                    : '전화 확인 대기';
+            final statusText = MockBackend.siteStatusLabel(status);
             final statusColor = status == SiteStatus.approved
                 ? Colors.green
                 : status == SiteStatus.rejected
@@ -452,9 +497,15 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
           _sectionCard(
             title: '현장 정보 입력',
             children: [
-              TextField(decoration: const InputDecoration(labelText: '현장명', filled: true)),
+              TextField(
+                controller: _siteNameController,
+                decoration: const InputDecoration(labelText: '현장명', filled: true),
+              ),
               const SizedBox(height: 12),
-              TextField(decoration: const InputDecoration(labelText: '주소', filled: true)),
+              TextField(
+                controller: _siteAddressController,
+                decoration: const InputDecoration(labelText: '주소', filled: true),
+              ),
               const SizedBox(height: 12),
               DropdownButtonFormField(
                 items: const [
@@ -462,15 +513,56 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                   DropdownMenuItem(value: '조공', child: Text('조공')),
                   DropdownMenuItem(value: '기공', child: Text('기공')),
                 ],
-                onChanged: (_) {},
+                value: _siteJobType,
+                onChanged: (value) => setState(() => _siteJobType = value?.toString() ?? '조공'),
                 decoration: const InputDecoration(labelText: '직종', filled: true),
+              ),
+            ],
+          ),
+          _sectionCard(
+            title: '사업자 정보',
+            children: [
+              TextField(
+                controller: _bizNameController,
+                decoration: const InputDecoration(labelText: '사업자명', filled: true),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _bizNumberController,
+                decoration: const InputDecoration(labelText: '사업자등록번호', filled: true),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _representativeController,
+                decoration: const InputDecoration(labelText: '대표자명', filled: true),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _bizPhoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: '사업자 연락처', filled: true),
+              ),
+            ],
+          ),
+          _sectionCard(
+            title: '현장 대리인 연락처',
+            children: [
+              TextField(
+                controller: _agentNameController,
+                decoration: const InputDecoration(labelText: '이름', filled: true),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _agentPhoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: '연락처', filled: true),
               ),
             ],
           ),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () => setState(() => _view = EmployerView.dashboard),
+              onPressed: () => _submitSiteRegistration(context),
               child: const Text('등록 요청 (전화 확인 후 승인)'),
             ),
           ),
@@ -480,9 +572,20 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
   }
 
   Widget _buildJobRequest() {
-    final site = _sites[_selectedSiteIndex];
+    final sites = _sites;
+    if (sites.isEmpty) {
+      return const Center(
+        child: Text('등록된 현장이 없습니다.', style: TextStyle(color: Color(0xFF64748B))),
+      );
+    }
+    final safeIndex = _selectedSiteIndex >= sites.length ? 0 : _selectedSiteIndex;
+    final site = sites[safeIndex];
     final qrPayload = _attendanceQr;
     final isQrExpired = qrPayload != null && DateTime.now().isAfter(qrPayload.expiresAtDate);
+    final todayLabel = _formatDate(DateTime.now());
+    final canBulkApprove = _todayWorkers.any(
+      (worker) => worker['approved'] != true && _isWorkerReadyForApproval(worker),
+    );
     final filteredWorkers = _showNoShowOnly
         ? _assignedWorkers.where((worker) => (worker['noShowCount'] as int? ?? 0) > 0).toList()
         : _assignedWorkers;
@@ -505,17 +608,49 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
               const SizedBox(height: 12),
               const Text('인력 요청', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              TextField(decoration: const InputDecoration(labelText: '근무일 (YYYY-MM-DD)', filled: true)),
+              TextField(
+                controller: _requestDateController,
+                decoration: const InputDecoration(labelText: '근무일 (YYYY-MM-DD)', filled: true),
+              ),
               const SizedBox(height: 12),
-              TextField(decoration: const InputDecoration(labelText: '인원', filled: true)),
+              TextField(
+                controller: _requestTimeController,
+                decoration: const InputDecoration(labelText: '근무 시간', filled: true),
+              ),
               const SizedBox(height: 12),
-              TextField(decoration: const InputDecoration(labelText: '단가', filled: true)),
+              TextField(
+                controller: _requestCountController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: '인원', filled: true),
+              ),
               const SizedBox(height: 12),
-              TextField(decoration: const InputDecoration(labelText: '특별 요청사항', filled: true)),
+              TextField(
+                controller: _requestRateController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: '단가', filled: true),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _requestMeetingController,
+                decoration: const InputDecoration(labelText: '집결지', filled: true),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _requestNotesController,
+                decoration: const InputDecoration(labelText: '준비물/특이사항', filled: true),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _requestMemoController,
+                decoration: const InputDecoration(labelText: '구인자 메모', filled: true),
+              ),
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(onPressed: () {}, child: const Text('구인 요청하기')),
+                child: ElevatedButton(
+                  onPressed: () => _submitJobRequest(context, site),
+                  child: const Text('구인 요청하기'),
+                ),
               ),
             ],
           ),
@@ -594,16 +729,143 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
             ],
           ),
           _sectionCard(
-            title: '요청 내역',
-            children: _jobRequests
-                .map(
-                  (job) => ListTile(
-                    title: Text('${job['date']} · ${job['jobType']} ${job['count']}명'),
-                    subtitle: Text('단가 ${job['rate']}원'),
-                    trailing: Text(job['status']!, style: const TextStyle(color: Color(0xFF475569))),
-                  ),
+            title: '오늘 일한 근로자',
+            children: [
+              Text('근무일 $todayLabel', style: const TextStyle(color: Color(0xFF64748B))),
+              const SizedBox(height: 6),
+              const Text(
+                '공수 입력과 근무 태도 별점 평가 후 최종 승인해 주세요.',
+                style: TextStyle(color: Color(0xFF475569)),
+              ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerRight,
+                child: ElevatedButton(
+                  onPressed: canBulkApprove
+                      ? () => setState(() {
+                            for (final worker in _todayWorkers) {
+                              if (worker['approved'] == true) continue;
+                              if (_isWorkerReadyForApproval(worker)) {
+                                worker['approved'] = true;
+                              }
+                            }
+                          })
+                      : null,
+                  child: const Text('전체 최종 승인'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (_todayWorkers.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text('오늘 근무한 근로자가 없습니다.', style: TextStyle(color: Color(0xFF94A3B8))),
                 )
-                .toList(),
+              else
+                ..._todayWorkers.asMap().entries.map(
+                      (entry) => _buildTodayWorkerCard(entry.key, entry.value),
+                    ),
+            ],
+          ),
+          _sectionCard(
+            title: '요청 내역',
+            children: () {
+              final jobs = _jobRequestsForSite(site['id'] as String? ?? '');
+              if (jobs.isEmpty) {
+                return const [
+                  Text('요청 내역이 없습니다.', style: TextStyle(color: Color(0xFF94A3B8))),
+                ];
+              }
+              return jobs
+                  .map(
+                    (job) {
+                      final status = job['status'] as JobRequestStatus? ?? JobRequestStatus.pending;
+                      final statusText = MockBackend.jobStatusLabel(status);
+                      final note = job['rejectReason'] ?? job['adminNote'];
+                      final assigned = MockBackend.assignedCountForJob(job);
+                      final total = job['count'] as int? ?? 0;
+                      final assignmentLabel = total > 0 ? '배정 $assigned/$total명' : null;
+                      final applicants = MockBackend.applicantsForJob(job['id'] as String);
+                      final assignedPriority = List<String>.from(job['assignedPriority'] as List? ?? []);
+                      final assignedSequence = List<String>.from(job['assignedSequence'] as List? ?? []);
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFFFF),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '${job['date']} · ${job['jobType']} ${job['count']}명',
+                                    style: const TextStyle(fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                                Text(statusText, style: const TextStyle(color: Color(0xFF475569))),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '단가 ${job['rate']}원${assignmentLabel == null ? '' : ' · $assignmentLabel'}',
+                              style: const TextStyle(color: Color(0xFF64748B)),
+                            ),
+                            if (note != null) ...[
+                              const SizedBox(height: 4),
+                              Text(note.toString(), style: const TextStyle(color: Color(0xFF94A3B8))),
+                            ],
+                            const SizedBox(height: 10),
+                            Text('지원자 ${applicants.length}명', style: const TextStyle(color: Color(0xFF64748B))),
+                            if (applicants.isEmpty)
+                              const Text('지원자가 없습니다.', style: TextStyle(color: Color(0xFF94A3B8)))
+                            else
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: applicants
+                                    .map(
+                                      (applicant) => Chip(
+                                        label: Text(applicant['name'] ?? '-'),
+                                        backgroundColor: const Color(0xFFF1F5F9),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                            if (assignedPriority.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              const Text('우선 배정', style: TextStyle(color: Color(0xFF64748B))),
+                              const SizedBox(height: 4),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: assignedPriority
+                                    .map((name) => Chip(label: Text(name), backgroundColor: const Color(0xFFEFF6FF)))
+                                    .toList(),
+                              ),
+                            ],
+                            if (assignedSequence.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              const Text('순차 배정', style: TextStyle(color: Color(0xFF64748B))),
+                              const SizedBox(height: 4),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: assignedSequence
+                                    .map((name) => Chip(label: Text(name), backgroundColor: const Color(0xFFF1F5F9)))
+                                    .toList(),
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    },
+                  )
+                  .toList();
+            }(),
           ),
           _sectionCard(
             title: '배정 인력',
@@ -678,6 +940,276 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
       ),
     );
   }
+
+  void _submitSiteRegistration(BuildContext context) {
+    final name = _siteNameController.text.trim();
+    final address = _siteAddressController.text.trim();
+    final bizName = _bizNameController.text.trim();
+    final bizNumber = _bizNumberController.text.trim();
+    final representative = _representativeController.text.trim();
+    final bizPhone = _bizPhoneController.text.trim();
+    final agentName = _agentNameController.text.trim();
+    final agentPhone = _agentPhoneController.text.trim();
+    if (name.isEmpty || address.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('현장명과 주소를 입력해주세요.')),
+      );
+      return;
+    }
+    if (bizName.isEmpty || bizNumber.isEmpty || representative.isEmpty || bizPhone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('사업자 정보를 모두 입력해주세요.')),
+      );
+      return;
+    }
+    if (agentName.isEmpty || agentPhone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('현장 대리인 연락처를 입력해주세요.')),
+      );
+      return;
+    }
+    MockBackend.addSiteRequest(
+      name: name,
+      address: address,
+      jobType: _siteJobType,
+      bizName: bizName,
+      bizNumber: bizNumber,
+      representative: representative,
+      bizPhone: bizPhone,
+      agentName: agentName,
+      agentPhone: agentPhone,
+    );
+    _siteNameController.clear();
+    _siteAddressController.clear();
+    _bizNameController.clear();
+    _bizNumberController.clear();
+    _representativeController.clear();
+    _bizPhoneController.clear();
+    _agentNameController.clear();
+    _agentPhoneController.clear();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('현장 등록 요청이 접수되었습니다.')),
+    );
+    setState(() => _view = EmployerView.dashboard);
+  }
+
+  void _submitJobRequest(BuildContext context, Map<String, dynamic> site) {
+    final siteId = site['id'] as String?;
+    if (siteId == null || siteId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('현장 정보가 올바르지 않습니다.')),
+      );
+      return;
+    }
+    final date = _requestDateController.text.trim();
+    final time = _requestTimeController.text.trim();
+    final count = int.tryParse(_requestCountController.text.trim());
+    final rate = _requestRateController.text.trim();
+    final meetingPoint = _requestMeetingController.text.trim();
+    final notes = _requestNotesController.text.trim();
+    final memo = _requestMemoController.text.trim();
+    if (date.isEmpty || time.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('근무일과 시간을 입력해주세요.')),
+      );
+      return;
+    }
+    if (count == null || count <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('인원을 올바르게 입력해주세요.')),
+      );
+      return;
+    }
+    if (rate.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('단가를 입력해주세요.')),
+      );
+      return;
+    }
+    MockBackend.addJobRequest(
+      siteId: siteId,
+      siteName: site['name'] as String? ?? '-',
+      date: date,
+      time: time,
+      jobType: site['jobType'] as String? ?? '-',
+      count: count,
+      rate: rate,
+      meetingPoint: meetingPoint.isEmpty ? '-' : meetingPoint,
+      notes: notes.isEmpty ? '-' : notes,
+      memo: memo.isEmpty ? '-' : memo,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('구인 요청이 등록되었습니다.')),
+    );
+    setState(() {
+      _requestCountController.text = '1';
+      _requestMemoController.clear();
+    });
+  }
+
+  Widget _buildTodayWorkerCard(int index, Map<String, dynamic> worker) {
+    final approved = worker['approved'] == true;
+    final selectedLabor = worker['labor'] as String? ?? '1.0';
+    final rating = worker['attitude'] as int? ?? 0;
+    final customLabor = (worker['customLabor'] as String? ?? '').trim();
+    final canApprove = _isWorkerReadyForApproval(worker);
+    final statusColor = approved ? const Color(0xFF16A34A) : const Color(0xFF2563EB);
+    final statusBg = approved ? const Color(0xFFDCFCE7) : const Color(0xFFEFF6FF);
+    final statusBorder = approved ? const Color(0xFF86EFAC) : const Color(0xFFBFDBFE);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  worker['name'] as String,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusBg,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: statusBorder),
+                ),
+                child: Text(
+                  approved ? '승인 완료' : '승인 전',
+                  style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${worker['role']} · ${worker['phone']} · 출근 ${worker['checkedInAt']}',
+            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          const Text('공수 입력', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _laborOptions.map((option) {
+              final value = option['value']!;
+              final selected = selectedLabor == value;
+              return ChoiceChip(
+                label: Text(option['label']!),
+                selected: selected,
+                onSelected: approved
+                    ? null
+                    : (_) {
+                        setState(() {
+                          _todayWorkers[index]['labor'] = value;
+                          if (value != 'custom') {
+                            _customLaborControllers[index].text = '';
+                            _todayWorkers[index]['customLabor'] = '';
+                          }
+                        });
+                      },
+                selectedColor: const Color(0xFFDBEAFE),
+                labelStyle: TextStyle(
+                  color: selected ? const Color(0xFF1D4ED8) : const Color(0xFF475569),
+                ),
+              );
+            }).toList(),
+          ),
+          if (selectedLabor == 'custom') ...[
+            const SizedBox(height: 10),
+            TextField(
+              controller: _customLaborControllers[index],
+              enabled: !approved,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: '기타 공수',
+                hintText: '예: 1.2',
+                filled: true,
+              ),
+              onChanged: (value) => setState(() => _todayWorkers[index]['customLabor'] = value),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Text('근무 태도', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(width: 8),
+              _buildStarRating(
+                rating: rating,
+                enabled: !approved,
+                onChanged: (value) => setState(() => _todayWorkers[index]['attitude'] = value),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                rating == 0 ? '미평가' : '$rating.0',
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              ElevatedButton(
+                onPressed: approved || !canApprove
+                    ? null
+                    : () => setState(() => _todayWorkers[index]['approved'] = true),
+                child: Text(approved ? '승인 완료' : '최종 승인'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isWorkerReadyForApproval(Map<String, dynamic> worker) {
+    final rating = worker['attitude'] as int? ?? 0;
+    final selectedLabor = worker['labor'] as String? ?? '1.0';
+    final customLabor = (worker['customLabor'] as String? ?? '').trim();
+    return rating > 0 && (selectedLabor != 'custom' || customLabor.isNotEmpty);
+  }
+
+  Widget _buildStarRating({
+    required int rating,
+    required bool enabled,
+    required ValueChanged<int> onChanged,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(5, (index) {
+        final value = index + 1;
+        final isSelected = rating >= value;
+        return IconButton(
+          icon: Icon(
+            isSelected ? Icons.star : Icons.star_border,
+            color: isSelected ? const Color(0xFFF59E0B) : const Color(0xFFCBD5F5),
+          ),
+          onPressed: enabled ? () => onChanged(value) : null,
+          iconSize: 20,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          tooltip: '$value',
+        );
+      }),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${_twoDigits(date.month)}-${_twoDigits(date.day)}';
+  }
+
+  String _twoDigits(int value) => value.toString().padLeft(2, '0');
 
   Future<void> _generateAttendanceQr(BuildContext context, String siteName) async {
     final connectivity = await Connectivity().checkConnectivity();

@@ -3,6 +3,8 @@
 
     <!-- API 호출 및 결제 연동을 위한 네트워크 권한 -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
     <!-- ✅ 위치 권한 추가 -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -81,6 +83,10 @@
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="kakaotalk" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="nmap" />
         </intent>
         <package android:name="com.kakao.talk" />
     </queries>

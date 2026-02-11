@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
+import '../../../data/mock_backend.dart';
 import '../../../widgets/map_launcher_card_flutter.dart';
 
 class SiteWorkDetailFlutter extends StatelessWidget {
-  const SiteWorkDetailFlutter({super.key, required this.site});
+  const SiteWorkDetailFlutter({
+    super.key,
+    required this.site,
+    required this.onVerify,
+    required this.onApprove,
+    required this.onReject,
+  });
 
   final Map<String, dynamic> site;
+  final VoidCallback onVerify;
+  final VoidCallback onApprove;
+  final ValueChanged<String> onReject;
 
   double? _toDouble(dynamic value) {
     if (value == null) return null;
@@ -25,6 +35,9 @@ class SiteWorkDetailFlutter extends StatelessWidget {
     final bizPhone = site['bizPhone'] as String? ?? '-';
     final agentName = site['agentName'] as String? ?? '-';
     final agentPhone = site['agentPhone'] as String? ?? '-';
+    final status = site['status'] as SiteStatus? ?? SiteStatus.pending;
+    final statusText = MockBackend.siteStatusLabel(status);
+    final rejectReason = site['rejectReason'] as String?;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -79,20 +92,60 @@ class SiteWorkDetailFlutter extends StatelessWidget {
           Text('이름: $agentName', style: const TextStyle(color: Color(0xFF475569))),
           Text('연락처: $agentPhone', style: const TextStyle(color: Color(0xFF475569))),
           const SizedBox(height: 12),
-          Text('상태: ${site['status'] ?? '-'}'),
+          Text('상태: $statusText'),
+          if (rejectReason != null && rejectReason.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('반려 사유: $rejectReason', style: const TextStyle(color: Color(0xFFB91C1C))),
+          ],
           const SizedBox(height: 12),
           Row(
             children: [
+              if (!phoneVerified)
+                OutlinedButton(
+                  onPressed: onVerify,
+                  child: const Text('전화 확인 완료'),
+                ),
+              if (!phoneVerified) const SizedBox(width: 8),
               OutlinedButton(
-                onPressed: phoneVerified ? () {} : null,
+                onPressed: phoneVerified && status != SiteStatus.approved ? onApprove : null,
                 child: const Text('승인'),
               ),
               const SizedBox(width: 8),
-              OutlinedButton(onPressed: () {}, child: const Text('반려')),
+              OutlinedButton(
+                onPressed: status == SiteStatus.rejected ? null : () => _openRejectDialog(context),
+                child: const Text('반려'),
+              ),
             ],
           )
         ],
       ),
     );
+  }
+
+  Future<void> _openRejectDialog(BuildContext context) async {
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('반려 사유 입력'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: '사유', filled: true),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('취소')),
+          ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('반려')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final reason = controller.text.trim();
+    if (reason.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('반려 사유를 입력해주세요.')),
+      );
+      return;
+    }
+    onReject(reason);
   }
 }
