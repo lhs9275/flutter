@@ -11,6 +11,8 @@ class JobRequestManagementFlutter extends StatelessWidget {
     required this.onAssignPriority,
     required this.onAssignSequence,
     required this.onResetAssignments,
+    required this.onConfirmApplicantPriority,
+    required this.onConfirmApplicantSequence,
   });
 
   final List<Map<String, dynamic>> requests;
@@ -20,6 +22,8 @@ class JobRequestManagementFlutter extends StatelessWidget {
   final ValueChanged<String> onAssignPriority;
   final ValueChanged<String> onAssignSequence;
   final ValueChanged<String> onResetAssignments;
+  final void Function(String jobId, String phone) onConfirmApplicantPriority;
+  final void Function(String jobId, String phone) onConfirmApplicantSequence;
 
   Color _statusColor(JobRequestStatus status) {
     switch (status) {
@@ -222,15 +226,75 @@ class JobRequestManagementFlutter extends StatelessWidget {
               if (applicants.isEmpty)
                 const Text('지원자가 없습니다.', style: TextStyle(color: Color(0xFF94A3B8)))
               else
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: applicants
-                      .map((applicant) => Chip(
-                            label: Text(applicant['name'] ?? '-'),
-                            backgroundColor: const Color(0xFFF1F5F9),
-                          ))
-                      .toList(),
+                Column(
+                  children: applicants.map((applicant) {
+                    final name = applicant['name']?.toString() ?? '-';
+                    final phone = applicant['phone']?.toString() ?? '-';
+                    final applicantStatus =
+                        applicant['status'] as ApplicantStatus? ?? ApplicantStatus.applied;
+                    final isConfirmed = applicantStatus == ApplicantStatus.confirmed;
+                    final statusChipColor =
+                        isConfirmed ? const Color(0xFF16A34A) : const Color(0xFF2563EB);
+                    final alreadyAssigned = assignedPriority.contains(name) || assignedSequence.contains(name);
+                    final canConfirm = !isConfirmed &&
+                        status == JobRequestStatus.approved &&
+                        (remainingCount > 0 || alreadyAssigned);
+                    return Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(child: Text('$name · $phone')),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: statusChipColor.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(color: statusChipColor.withOpacity(0.4)),
+                                ),
+                                child: Text(
+                                  isConfirmed ? '확정' : '지원',
+                                  style: TextStyle(
+                                    color: statusChipColor,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (!isConfirmed) ...[
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 8,
+                              children: [
+                                OutlinedButton(
+                                  onPressed: canConfirm
+                                      ? () => onConfirmApplicantPriority(request['id'] as String, phone)
+                                      : null,
+                                  child: const Text('우선 확정'),
+                                ),
+                                OutlinedButton(
+                                  onPressed: canConfirm
+                                      ? () => onConfirmApplicantSequence(request['id'] as String, phone)
+                                      : null,
+                                  child: const Text('순차 확정'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 ),
               if (status == JobRequestStatus.approved) ...[
                 const SizedBox(height: 12),

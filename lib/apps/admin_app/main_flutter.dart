@@ -155,6 +155,8 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
           onAssignPriority: _assignPriorityWorker,
           onAssignSequence: _assignSequenceWorker,
           onResetAssignments: _resetAssignments,
+          onConfirmApplicantPriority: _confirmApplicantPriority,
+          onConfirmApplicantSequence: _confirmApplicantSequence,
         );
       case AdminView.dailyWork:
         return const DailyWorkManagementFlutter();
@@ -238,6 +240,26 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
 
   void _resetAssignments(String jobId) {
     setState(() => MockBackend.resetAssignments(jobId));
+  }
+
+  void _confirmApplicantPriority(String jobId, String phone) {
+    final ok = MockBackend.confirmApplicant(jobId: jobId, phone: phone, priority: true);
+    setState(() {});
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('확정 처리에 실패했습니다.')),
+      );
+    }
+  }
+
+  void _confirmApplicantSequence(String jobId, String phone) {
+    final ok = MockBackend.confirmApplicant(jobId: jobId, phone: phone, priority: false);
+    setState(() {});
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('확정 처리에 실패했습니다.')),
+      );
+    }
   }
 
   Widget _buildHome() {

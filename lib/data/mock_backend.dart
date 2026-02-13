@@ -4,9 +4,12 @@ enum SiteStatus { pending, approved, rejected }
 
 enum JobRequestStatus { pending, approved, rejected }
 
+enum ApplicantStatus { applied, confirmed }
+
 class MockBackend {
   static final Random _random = Random();
   static const List<String> _knownRegions = ['서울', '경기', '인천', '부산', '대구', '광주', '대전', '울산'];
+  static final Map<String, Map<String, dynamic>> workEntries = {};
 
   static final List<Map<String, dynamic>> priorityCandidates = [
     {'name': '김근로', 'role': '조공', 'noShowCount': 0},
@@ -100,9 +103,23 @@ class MockBackend {
       'rejectReason': null,
       'assignedPriority': <String>[],
       'assignedSequence': <String>[],
-      'applicants': <Map<String, String>>[
-        {'name': '정지원', 'phone': '010-2222-0001'},
-        {'name': '윤대기', 'phone': '010-2222-0002'},
+      'applicants': <Map<String, dynamic>>[
+        {
+          'name': '정지원',
+          'phone': '010-2222-0001',
+          'phoneKey': '01022220001',
+          'status': ApplicantStatus.applied,
+          'assignedType': null,
+          'noShowCount': 1,
+        },
+        {
+          'name': '윤대기',
+          'phone': '010-2222-0002',
+          'phoneKey': '01022220002',
+          'status': ApplicantStatus.applied,
+          'assignedType': null,
+          'noShowCount': 0,
+        },
       ],
     },
     {
@@ -123,10 +140,31 @@ class MockBackend {
       'rejectReason': null,
       'assignedPriority': <String>['김근로'],
       'assignedSequence': <String>['최인력', '정지원'],
-      'applicants': <Map<String, String>>[
-        {'name': '김근로', 'phone': '010-1234-5678'},
-        {'name': '최인력', 'phone': '010-3333-0003'},
-        {'name': '정지원', 'phone': '010-2222-0001'},
+      'applicants': <Map<String, dynamic>>[
+        {
+          'name': '김근로',
+          'phone': '010-1234-5678',
+          'phoneKey': '01012345678',
+          'status': ApplicantStatus.confirmed,
+          'assignedType': 'priority',
+          'noShowCount': 0,
+        },
+        {
+          'name': '최인력',
+          'phone': '010-3333-0003',
+          'phoneKey': '01033330003',
+          'status': ApplicantStatus.confirmed,
+          'assignedType': 'sequence',
+          'noShowCount': 2,
+        },
+        {
+          'name': '정지원',
+          'phone': '010-2222-0001',
+          'phoneKey': '01022220001',
+          'status': ApplicantStatus.confirmed,
+          'assignedType': 'sequence',
+          'noShowCount': 1,
+        },
       ],
     },
   ];
@@ -140,9 +178,77 @@ class MockBackend {
     return '$y-$m-$d $h:$min';
   }
 
+  static String _formatDate(DateTime dateTime) {
+    final y = dateTime.year.toString().padLeft(4, '0');
+    final m = dateTime.month.toString().padLeft(2, '0');
+    final d = dateTime.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  static String _formatTime(DateTime dateTime) {
+    final h = dateTime.hour.toString().padLeft(2, '0');
+    final m = dateTime.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
   static String _randomId(String prefix) {
     final value = _random.nextInt(900000) + 100000;
     return '$prefix-$value';
+  }
+
+  static String _normalizePhone(String phone) {
+    return phone.replaceAll(RegExp(r'[^0-9]'), '');
+  }
+
+  static bool _samePhone(String a, String b) {
+    return _normalizePhone(a) == _normalizePhone(b);
+  }
+
+  static String _workEntryKey(String date, String siteId, String phone) {
+    return '$date|$siteId|${_normalizePhone(phone)}';
+  }
+
+  static Map<String, dynamic>? _findSiteByName(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return null;
+    for (final site in sites) {
+      if ((site['name']?.toString() ?? '') == trimmed) return site;
+    }
+    return null;
+  }
+
+  static int _lookupNoShowCount(String siteId, String phone) {
+    final normalized = _normalizePhone(phone);
+    var maxCount = 0;
+    for (final job in jobRequests) {
+      if (job['siteId'] != siteId) continue;
+      final applicants = List<Map<String, dynamic>>.from(job['applicants'] as List? ?? []);
+      for (final applicant in applicants) {
+        if (_normalizePhone(applicant['phone']?.toString() ?? '') != normalized) continue;
+        final count = applicant['noShowCount'] as int? ?? 0;
+        if (count > maxCount) {
+          maxCount = count;
+        }
+      }
+    }
+    return maxCount;
+  }
+
+  static bool _isConfirmedForSite(String siteId, String phone) {
+    final normalized = _normalizePhone(phone);
+    for (final job in jobRequests) {
+      if (job['siteId'] != siteId) continue;
+      final status = job['status'] as JobRequestStatus? ?? JobRequestStatus.pending;
+      if (status != JobRequestStatus.approved) continue;
+      final applicants = List<Map<String, dynamic>>.from(job['applicants'] as List? ?? []);
+      final matched = applicants.any((applicant) {
+        final samePhone = _normalizePhone(applicant['phone']?.toString() ?? '') == normalized;
+        final state = applicant['status'] as ApplicantStatus? ?? ApplicantStatus.applied;
+        return samePhone && state == ApplicantStatus.confirmed;
+      });
+      if (matched) return true;
+    }
+    return false;
   }
 
   static String _extractRegion(String address) {
@@ -252,6 +358,7 @@ class MockBackend {
       'rejectReason': null,
       'assignedPriority': <String>[],
       'assignedSequence': <String>[],
+      'applicants': <Map<String, dynamic>>[],
     };
     jobRequests.insert(0, request);
     return request;
@@ -281,13 +388,23 @@ class MockBackend {
     jobRequests[index] = current;
   }
 
-  static List<Map<String, String>> applicantsForJob(String jobId) {
+  static List<Map<String, dynamic>> applicantsForJob(String jobId) {
     final job = jobRequests.firstWhere(
       (item) => item['id'] == jobId,
       orElse: () => {},
     );
     final list = job['applicants'] as List<dynamic>? ?? [];
-    return list.map((entry) => Map<String, String>.from(entry as Map)).toList();
+    return list.map((entry) => Map<String, dynamic>.from(entry as Map)).toList();
+  }
+
+  static ApplicantStatus? applicantStatus(String jobId, String phone) {
+    final applicants = applicantsForJob(jobId);
+    for (final applicant in applicants) {
+      if (_samePhone(applicant['phone']?.toString() ?? '', phone)) {
+        return applicant['status'] as ApplicantStatus? ?? ApplicantStatus.applied;
+      }
+    }
+    return null;
   }
 
   static bool addApplication({
@@ -298,10 +415,18 @@ class MockBackend {
     final index = jobRequests.indexWhere((job) => job['id'] == jobId);
     if (index == -1) return false;
     final job = Map<String, dynamic>.from(jobRequests[index]);
-    final applicants = List<Map<String, String>>.from(job['applicants'] as List? ?? []);
-    final exists = applicants.any((item) => item['phone'] == phone);
+    final applicants = List<Map<String, dynamic>>.from(job['applicants'] as List? ?? []);
+    final exists = applicants.any((item) => _samePhone(item['phone']?.toString() ?? '', phone));
     if (exists) return false;
-    applicants.add({'name': name, 'phone': phone});
+    final normalized = _normalizePhone(phone);
+    applicants.add({
+      'name': name,
+      'phone': phone,
+      'phoneKey': normalized,
+      'status': ApplicantStatus.applied,
+      'assignedType': null,
+      'noShowCount': 0,
+    });
     job['applicants'] = applicants;
     jobRequests[index] = job;
     return true;
@@ -311,10 +436,169 @@ class MockBackend {
     final index = jobRequests.indexWhere((job) => job['id'] == jobId);
     if (index == -1) return;
     final job = Map<String, dynamic>.from(jobRequests[index]);
-    final applicants = List<Map<String, String>>.from(job['applicants'] as List? ?? []);
-    applicants.removeWhere((item) => item['phone'] == phone);
+    final applicants = List<Map<String, dynamic>>.from(job['applicants'] as List? ?? []);
+    final target = applicants.firstWhere(
+      (item) => _samePhone(item['phone']?.toString() ?? '', phone),
+      orElse: () => {},
+    );
+    if (target.isNotEmpty) {
+      final status = target['status'] as ApplicantStatus? ?? ApplicantStatus.applied;
+      if (status == ApplicantStatus.confirmed) {
+        return;
+      }
+    }
+    applicants.removeWhere((item) => _samePhone(item['phone']?.toString() ?? '', phone));
     job['applicants'] = applicants;
     jobRequests[index] = job;
+  }
+
+  static bool confirmApplicant({
+    required String jobId,
+    required String phone,
+    required bool priority,
+  }) {
+    final index = jobRequests.indexWhere((job) => job['id'] == jobId);
+    if (index == -1) return false;
+    final job = Map<String, dynamic>.from(jobRequests[index]);
+    final jobStatus = job['status'] as JobRequestStatus? ?? JobRequestStatus.pending;
+    if (jobStatus != JobRequestStatus.approved) return false;
+    final applicants = List<Map<String, dynamic>>.from(job['applicants'] as List? ?? []);
+    final applicantIndex = applicants.indexWhere((item) => _samePhone(item['phone']?.toString() ?? '', phone));
+    if (applicantIndex == -1) return false;
+    final applicant = Map<String, dynamic>.from(applicants[applicantIndex]);
+    final name = applicant['name']?.toString() ?? '';
+    final status = applicant['status'] as ApplicantStatus? ?? ApplicantStatus.applied;
+    if (status == ApplicantStatus.confirmed) return false;
+
+    final assignedPriority = List<String>.from(job['assignedPriority'] as List? ?? []);
+    final assignedSequence = List<String>.from(job['assignedSequence'] as List? ?? []);
+    final alreadyAssigned = assignedPriority.contains(name) || assignedSequence.contains(name);
+    final remaining = remainingCountForJob(job);
+    if (!alreadyAssigned && remaining <= 0) return false;
+
+    applicant['status'] = ApplicantStatus.confirmed;
+    applicant['assignedType'] = priority ? 'priority' : 'sequence';
+    applicants[applicantIndex] = applicant;
+    job['applicants'] = applicants;
+
+    if (priority) {
+      if (!assignedPriority.contains(name)) {
+        assignedPriority.add(name);
+      }
+    } else {
+      if (!assignedSequence.contains(name)) {
+        assignedSequence.add(name);
+      }
+    }
+    job['assignedPriority'] = assignedPriority;
+    job['assignedSequence'] = assignedSequence;
+    jobRequests[index] = job;
+    return true;
+  }
+
+  static Map<String, dynamic>? markAttendance({
+    required String siteId,
+    required String siteName,
+    required String name,
+    required String phone,
+    DateTime? at,
+  }) {
+    final resolvedSite = siteId.trim().isEmpty ? null : _findSite(siteId);
+    final site = resolvedSite ?? _findSiteByName(siteName);
+    if (site == null) return null;
+    final resolvedSiteId = site['id']?.toString() ?? siteId;
+    if (resolvedSiteId.isEmpty) return null;
+    if (!_isConfirmedForSite(resolvedSiteId, phone)) return null;
+    final now = at ?? DateTime.now();
+    final date = _formatDate(now);
+    final entryKey = _workEntryKey(date, resolvedSiteId, phone);
+    final existing = workEntries[entryKey];
+    final entry = <String, dynamic>{
+      'entryKey': entryKey,
+      'siteId': resolvedSiteId,
+      'siteName': site['name'] ?? siteName,
+      'date': date,
+      'name': name,
+      'phone': phone,
+      'phoneKey': _normalizePhone(phone),
+      'role': site['jobType'] ?? '-',
+      'checkedInAt': _formatTime(now),
+      'labor': existing?['labor'] ?? '1.0',
+      'customLabor': existing?['customLabor'] ?? '',
+      'attitude': existing?['attitude'] ?? 0,
+      'approved': existing?['approved'] ?? false,
+      'noShowCount': _lookupNoShowCount(resolvedSiteId, phone),
+    };
+    workEntries[entryKey] = entry;
+    return Map<String, dynamic>.from(entry);
+  }
+
+  static List<Map<String, dynamic>> todayWorkersForSite(
+    String siteId, {
+    DateTime? date,
+  }) {
+    final targetDate = _formatDate(date ?? DateTime.now());
+    final entries = workEntries.values.where((entry) {
+      return entry['siteId'] == siteId && entry['date'] == targetDate;
+    }).toList();
+    entries.sort((a, b) {
+      final aTime = a['checkedInAt']?.toString() ?? '';
+      final bTime = b['checkedInAt']?.toString() ?? '';
+      return aTime.compareTo(bTime);
+    });
+    return entries.map((entry) => Map<String, dynamic>.from(entry)).toList();
+  }
+
+  static bool updateWorkEntry({
+    required String entryKey,
+    String? labor,
+    String? customLabor,
+    int? attitude,
+    bool? approved,
+  }) {
+    final existing = workEntries[entryKey];
+    if (existing == null) return false;
+    final updated = Map<String, dynamic>.from(existing);
+    if (labor != null) updated['labor'] = labor;
+    if (customLabor != null) updated['customLabor'] = customLabor;
+    if (attitude != null) updated['attitude'] = attitude;
+    if (approved != null) updated['approved'] = approved;
+    workEntries[entryKey] = updated;
+    return true;
+  }
+
+  static List<Map<String, dynamic>> confirmedApplicantsForSite(String siteId) {
+    final Map<String, Map<String, dynamic>> byPhone = {};
+    for (final job in jobRequests) {
+      if (job['siteId'] != siteId) continue;
+      final applicants = List<Map<String, dynamic>>.from(job['applicants'] as List? ?? []);
+      for (final applicant in applicants) {
+        final status = applicant['status'] as ApplicantStatus? ?? ApplicantStatus.applied;
+        if (status != ApplicantStatus.confirmed) continue;
+        final phone = applicant['phone']?.toString() ?? '';
+        if (phone.isEmpty) continue;
+        final key = _normalizePhone(phone);
+        final noShowCount = applicant['noShowCount'] as int? ?? 0;
+        if (byPhone.containsKey(key)) {
+          final existing = byPhone[key]!;
+          final existingNoShow = existing['noShowCount'] as int? ?? 0;
+          if (noShowCount > existingNoShow) {
+            byPhone[key] = {
+              ...existing,
+              'noShowCount': noShowCount,
+            };
+          }
+          continue;
+        }
+        byPhone[key] = {
+          'name': applicant['name'] ?? '-',
+          'role': job['jobType'] ?? '-',
+          'phone': phone,
+          'noShowCount': noShowCount,
+        };
+      }
+    }
+    return byPhone.values.map((entry) => Map<String, dynamic>.from(entry)).toList();
   }
 
   static Map<String, dynamic>? _findSite(String siteId) {
@@ -405,6 +689,15 @@ class MockBackend {
     final job = Map<String, dynamic>.from(jobRequests[index]);
     job['assignedPriority'] = <String>[];
     job['assignedSequence'] = <String>[];
+    final applicants = List<Map<String, dynamic>>.from(job['applicants'] as List? ?? []);
+    for (var i = 0; i < applicants.length; i += 1) {
+      applicants[i] = {
+        ...applicants[i],
+        'status': ApplicantStatus.applied,
+        'assignedType': null,
+      };
+    }
+    job['applicants'] = applicants;
     jobRequests[index] = job;
   }
 

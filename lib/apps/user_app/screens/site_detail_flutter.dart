@@ -9,14 +9,12 @@ class SiteDetailFlutter extends StatelessWidget {
     required this.application,
     required this.onApply,
     required this.onCancel,
-    required this.onConfirmDemo,
   });
 
   final Map<String, dynamic> site;
   final ApplicationRecord? application;
   final VoidCallback onApply;
   final VoidCallback onCancel;
-  final VoidCallback onConfirmDemo;
 
   double? _toDouble(dynamic value) {
     if (value == null) return null;
@@ -143,22 +141,12 @@ class SiteDetailFlutter extends StatelessWidget {
         else if (status == ApplicationStatus.applied)
           Column(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: onCancel,
-                      child: const Text('지원 취소'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: onConfirmDemo,
-                      child: const Text('확정 처리(데모)'),
-                    ),
-                  ),
-                ],
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: onCancel,
+                  child: const Text('지원 취소'),
+                ),
               ),
               const SizedBox(height: 8),
               const Text(

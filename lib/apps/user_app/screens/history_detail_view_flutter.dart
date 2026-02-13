@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 import '../widgets/attendance_scan_sheet_flutter.dart';
 import '../../../widgets/attendance_qr_helper.dart';
+import '../../../data/mock_backend.dart';
 
 enum _HistoryFilter { thisMonth, lastMonth, threeMonths, all }
 
 class HistoryDetailViewFlutter extends StatefulWidget {
-  const HistoryDetailViewFlutter({super.key});
+  const HistoryDetailViewFlutter({
+    super.key,
+    required this.currentUserName,
+    required this.currentUserPhone,
+  });
+
+  final String currentUserName;
+  final String currentUserPhone;
 
   @override
   State<HistoryDetailViewFlutter> createState() => _HistoryDetailViewFlutterState();
@@ -15,6 +23,7 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
   DateTime? _lastAttendanceAt;
   String? _lastAttendanceSite;
   bool _confirmedThisSession = false;
+  String? _attendanceErrorMessage;
   late final List<_HistoryItem> _items;
   _HistoryFilter _activeFilter = _HistoryFilter.thisMonth;
 
@@ -336,20 +345,38 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
 
   Future<void> _openAttendanceScanner(BuildContext context) async {
     _confirmedThisSession = false;
+    _attendanceErrorMessage = null;
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AttendanceScanSheetFlutter(
           onConfirmed: (payload) {
+            final saved = MockBackend.markAttendance(
+              siteId: payload.siteId ?? '',
+              siteName: payload.siteName,
+              name: widget.currentUserName,
+              phone: widget.currentUserPhone,
+            );
+            if (saved == null) {
+              _attendanceErrorMessage = '확정된 근로자만 출근 확인이 가능합니다.';
+              return;
+            }
             _confirmedThisSession = true;
             setState(() {
               _lastAttendanceAt = DateTime.now();
-              _lastAttendanceSite = payload.siteName;
+              _lastAttendanceSite = saved['siteName']?.toString() ?? payload.siteName;
             });
           },
         ),
       ),
     );
-    if (!_confirmedThisSession || !mounted) return;
+    if (!mounted) return;
+    if (_attendanceErrorMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_attendanceErrorMessage!)),
+      );
+      return;
+    }
+    if (!_confirmedThisSession) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('출근 확인이 완료되었습니다.')),
     );

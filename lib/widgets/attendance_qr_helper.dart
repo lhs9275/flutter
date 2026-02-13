@@ -4,24 +4,28 @@ import 'dart:math';
 class AttendanceQrPayload {
   AttendanceQrPayload({
     required this.siteName,
+    required this.siteId,
     required this.issuedAt,
     required this.expiresAt,
     required this.token,
   });
 
   final String siteName;
+  final String? siteId;
   final int issuedAt;
   final int expiresAt;
   final String token;
 
   factory AttendanceQrPayload.create({
     required String siteName,
+    String? siteId,
     Duration validFor = const Duration(minutes: 10),
   }) {
     final now = DateTime.now();
     final expires = now.add(validFor);
     return AttendanceQrPayload(
       siteName: siteName,
+      siteId: siteId,
       issuedAt: now.millisecondsSinceEpoch,
       expiresAt: expires.millisecondsSinceEpoch,
       token: _randomToken(16),
@@ -33,6 +37,7 @@ class AttendanceQrPayload {
     try {
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
       final siteName = decoded['site']?.toString() ?? '';
+      final siteId = decoded['siteId']?.toString();
       final issuedAt = int.tryParse(decoded['issuedAt']?.toString() ?? '');
       final expiresAt = int.tryParse(decoded['expiresAt']?.toString() ?? '');
       final token = decoded['token']?.toString() ?? '';
@@ -41,6 +46,7 @@ class AttendanceQrPayload {
       }
       return AttendanceQrPayload(
         siteName: siteName,
+        siteId: siteId?.isEmpty ?? true ? null : siteId,
         issuedAt: issuedAt,
         expiresAt: expiresAt,
         token: token,
@@ -53,6 +59,7 @@ class AttendanceQrPayload {
   String encode() {
     return jsonEncode({
       'site': siteName,
+      if (siteId != null) 'siteId': siteId,
       'issuedAt': issuedAt,
       'expiresAt': expiresAt,
       'token': token,

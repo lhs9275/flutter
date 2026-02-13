@@ -214,16 +214,50 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     });
   }
 
+  ApplicantStatus? _backendApplicantStatus(String jobId) {
+    return MockBackend.applicantStatus(jobId, _currentUserPhone());
+  }
+
   ApplicationRecord? _applicationForSite(Map<String, dynamic> site) {
     final id = site['id'] as String?;
     if (id == null) return null;
-    return _applications[id];
+    final record = _applications[id];
+    final backendStatus = _backendApplicantStatus(id);
+    if (backendStatus == ApplicantStatus.confirmed) {
+      return ApplicationRecord(
+        status: ApplicationStatus.confirmed,
+        appliedAt: record?.appliedAt ?? DateTime.now(),
+        confirmedAt: record?.confirmedAt ?? DateTime.now(),
+      );
+    }
+    return record;
   }
 
   Future<void> _applyToSite(BuildContext context, Map<String, dynamic> site) async {
     final id = site['id'] as String?;
     if (id == null) return;
     final record = _applications[id];
+    final backendStatus = _backendApplicantStatus(id);
+    if (backendStatus == ApplicantStatus.confirmed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이미 확정된 공고입니다.')),
+      );
+      return;
+    }
+    if (backendStatus == ApplicantStatus.applied) {
+      setState(() {
+        _applications[id] = (record ??
+                ApplicationRecord(
+                  status: ApplicationStatus.applied,
+                  appliedAt: DateTime.now(),
+                ))
+            .copyWith(status: ApplicationStatus.applied);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이미 지원한 공고입니다.')),
+      );
+      return;
+    }
     if (record != null && record.status == ApplicationStatus.confirmed) return;
     final approved = await showDialog<bool>(
       context: context,
@@ -257,6 +291,13 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     final id = site['id'] as String?;
     if (id == null) return;
     final record = _applications[id];
+    final backendStatus = _backendApplicantStatus(id);
+    if (backendStatus == ApplicantStatus.confirmed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('확정된 공고는 취소할 수 없습니다.')),
+      );
+      return;
+    }
     if (record == null || record.status == ApplicationStatus.confirmed) return;
     final approved = await showDialog<bool>(
       context: context,
@@ -276,23 +317,6 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     MockBackend.cancelApplication(jobId: id, phone: _currentUserPhone());
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('지원이 취소되었습니다.')),
-    );
-  }
-
-  void _confirmApplicationDemo(BuildContext context, Map<String, dynamic> site) {
-    final id = site['id'] as String?;
-    if (id == null) return;
-    final record = _applications[id];
-    if (record == null) return;
-    if (record.status == ApplicationStatus.confirmed) return;
-    setState(() {
-      _applications[id] = record.copyWith(
-        status: ApplicationStatus.confirmed,
-        confirmedAt: DateTime.now(),
-      );
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('확정 처리되었습니다.')),
     );
   }
 
@@ -351,6 +375,31 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
   Widget _buildSitesTabContent() {
     final preferredRegions = List<String>.from(_preferredRegions);
     final sites = _sites;
+    final applicationSnapshot = <String, ApplicationRecord>{};
+    for (final site in sites) {
+      final id = site['id'] as String?;
+      if (id == null) continue;
+      final backendStatus = _backendApplicantStatus(id);
+      final local = _applications[id];
+      if (backendStatus == ApplicantStatus.confirmed) {
+        applicationSnapshot[id] = ApplicationRecord(
+          status: ApplicationStatus.confirmed,
+          appliedAt: local?.appliedAt ?? DateTime.now(),
+          confirmedAt: DateTime.now(),
+        );
+        continue;
+      }
+      if (backendStatus == ApplicantStatus.applied) {
+        applicationSnapshot[id] = ApplicationRecord(
+          status: ApplicationStatus.applied,
+          appliedAt: local?.appliedAt ?? DateTime.now(),
+        );
+        continue;
+      }
+      if (local != null) {
+        applicationSnapshot[id] = local;
+      }
+    }
     final availableRegions = sites
         .map((site) => site['region'] as String?)
         .whereType<String>()
@@ -386,12 +435,15 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
           }),
           onApply: (site) => _applyToSite(context, site),
           onCancel: (site) => _cancelApplication(context, site),
-          applications: _applications,
+          applications: applicationSnapshot,
         );
       case SiteTab.calendar:
         return const CalendarViewFlutter();
       case SiteTab.history:
-        return const HistoryDetailViewFlutter();
+        return HistoryDetailViewFlutter(
+          currentUserName: _currentUserName(),
+          currentUserPhone: _currentUserPhone(),
+        );
       case SiteTab.userInfo:
         return UserInfoViewFlutter(
           name: _isKnownUser(_phoneController.text)
@@ -514,7 +566,6 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
             application: _applicationForSite(selected),
             onApply: () => _applyToSite(context, selected),
             onCancel: () => _cancelApplication(context, selected),
-            onConfirmDemo: () => _confirmApplicationDemo(context, selected),
           ),
         );
       case UserView.editProfile:

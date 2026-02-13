@@ -82,11 +82,9 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     return MockBackend.jobRequestsForSite(siteId);
   }
 
-  final List<Map<String, dynamic>> _assignedWorkers = const [
-    {'name': '김근로', 'role': '조공', 'phone': '010-1234-5678', 'noShowCount': 0},
-    {'name': '이인부', 'role': '보통인부', 'phone': '010-2222-3333', 'noShowCount': 1},
-    {'name': '박기공', 'role': '기공', 'phone': '010-4444-5555', 'noShowCount': 3},
-  ];
+  List<Map<String, dynamic>> _assignedWorkersForSite(String siteId) {
+    return MockBackend.confirmedApplicantsForSite(siteId);
+  }
 
   static const List<Map<String, String>> _laborOptions = [
     {'value': '1.0', 'label': '1.0'},
@@ -95,48 +93,16 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     {'value': 'custom', 'label': '기타'},
   ];
 
-  final List<Map<String, dynamic>> _todayWorkers = [
-    {
-      'name': '김근로',
-      'role': '조공',
-      'phone': '010-1234-5678',
-      'checkedInAt': '07:52',
-      'labor': '1.0',
-      'customLabor': '',
-      'attitude': 0,
-      'approved': false,
-    },
-    {
-      'name': '이인부',
-      'role': '보통인부',
-      'phone': '010-2222-3333',
-      'checkedInAt': '08:04',
-      'labor': '0.5',
-      'customLabor': '',
-      'attitude': 0,
-      'approved': false,
-    },
-    {
-      'name': '박기공',
-      'role': '기공',
-      'phone': '010-4444-5555',
-      'checkedInAt': '08:12',
-      'labor': 'custom',
-      'customLabor': '1.2',
-      'attitude': 0,
-      'approved': false,
-    },
-  ];
+  List<Map<String, dynamic>> _todayWorkersForSite(String siteId) {
+    return MockBackend.todayWorkersForSite(siteId);
+  }
 
-  late final List<TextEditingController> _customLaborControllers;
+  final Map<String, TextEditingController> _customLaborControllers = {};
 
   @override
   void initState() {
     super.initState();
     _view = widget.initialView;
-    _customLaborControllers = _todayWorkers
-        .map((worker) => TextEditingController(text: worker['customLabor'] as String? ?? ''))
-        .toList();
     _requestDateController.text = _formatDate(DateTime.now());
     _requestTimeController.text = '07:30 ~ 17:00';
     _requestCountController.text = '1';
@@ -146,7 +112,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
 
   @override
   void dispose() {
-    for (final controller in _customLaborControllers) {
+    for (final controller in _customLaborControllers.values) {
       controller.dispose();
     }
     _siteNameController.dispose();
@@ -221,6 +187,18 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
         ],
       ),
     );
+  }
+
+  TextEditingController _customLaborControllerFor(String entryKey, String initial) {
+    final controller = _customLaborControllers.putIfAbsent(
+      entryKey,
+      () => TextEditingController(text: initial),
+    );
+    if (controller.text != initial) {
+      controller.text = initial;
+      controller.selection = TextSelection.collapsed(offset: controller.text.length);
+    }
+    return controller;
   }
 
   Widget _buildLogin() {
@@ -580,15 +558,18 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     }
     final safeIndex = _selectedSiteIndex >= sites.length ? 0 : _selectedSiteIndex;
     final site = sites[safeIndex];
+    final siteId = site['id'] as String? ?? '';
     final qrPayload = _attendanceQr;
     final isQrExpired = qrPayload != null && DateTime.now().isAfter(qrPayload.expiresAtDate);
     final todayLabel = _formatDate(DateTime.now());
-    final canBulkApprove = _todayWorkers.any(
+    final todayWorkers = siteId.isEmpty ? <Map<String, dynamic>>[] : _todayWorkersForSite(siteId);
+    final canBulkApprove = todayWorkers.any(
       (worker) => worker['approved'] != true && _isWorkerReadyForApproval(worker),
     );
+    final assignedWorkers = siteId.isEmpty ? <Map<String, dynamic>>[] : _assignedWorkersForSite(siteId);
     final filteredWorkers = _showNoShowOnly
-        ? _assignedWorkers.where((worker) => (worker['noShowCount'] as int? ?? 0) > 0).toList()
-        : _assignedWorkers;
+        ? assignedWorkers.where((worker) => (worker['noShowCount'] as int? ?? 0) > 0).toList()
+        : assignedWorkers;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -675,7 +656,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () => _generateAttendanceQr(context, site['name'] as String),
+                  onPressed: () => _generateAttendanceQr(context, site),
                   child: Text(qrPayload == null ? 'QR 생성' : 'QR 다시 생성'),
                 ),
               ),
@@ -743,10 +724,13 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                 child: ElevatedButton(
                   onPressed: canBulkApprove
                       ? () => setState(() {
-                            for (final worker in _todayWorkers) {
+                            for (final worker in todayWorkers) {
                               if (worker['approved'] == true) continue;
                               if (_isWorkerReadyForApproval(worker)) {
-                                worker['approved'] = true;
+                                final entryKey = worker['entryKey']?.toString() ?? '';
+                                if (entryKey.isNotEmpty) {
+                                  MockBackend.updateWorkEntry(entryKey: entryKey, approved: true);
+                                }
                               }
                             }
                           })
@@ -755,14 +739,14 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                 ),
               ),
               const SizedBox(height: 12),
-              if (_todayWorkers.isEmpty)
+              if (todayWorkers.isEmpty)
                 const Padding(
                   padding: EdgeInsets.only(top: 4),
                   child: Text('오늘 근무한 근로자가 없습니다.', style: TextStyle(color: Color(0xFF94A3B8))),
                 )
               else
-                ..._todayWorkers.asMap().entries.map(
-                      (entry) => _buildTodayWorkerCard(entry.key, entry.value),
+                ...todayWorkers.map(
+                      (worker) => _buildTodayWorkerCard(worker),
                     ),
             ],
           ),
@@ -785,6 +769,10 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                       final total = job['count'] as int? ?? 0;
                       final assignmentLabel = total > 0 ? '배정 $assigned/$total명' : null;
                       final applicants = MockBackend.applicantsForJob(job['id'] as String);
+                      final confirmedApplicants = applicants
+                          .where((applicant) =>
+                              applicant['status'] == ApplicantStatus.confirmed)
+                          .toList();
                       final assignedPriority = List<String>.from(job['assignedPriority'] as List? ?? []);
                       final assignedSequence = List<String>.from(job['assignedSequence'] as List? ?? []);
                       return Container(
@@ -819,7 +807,10 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                               Text(note.toString(), style: const TextStyle(color: Color(0xFF94A3B8))),
                             ],
                             const SizedBox(height: 10),
-                            Text('지원자 ${applicants.length}명', style: const TextStyle(color: Color(0xFF64748B))),
+                            Text(
+                              '지원자 ${applicants.length}명 · 확정 ${confirmedApplicants.length}명',
+                              style: const TextStyle(color: Color(0xFF64748B)),
+                            ),
                             if (applicants.isEmpty)
                               const Text('지원자가 없습니다.', style: TextStyle(color: Color(0xFF94A3B8)))
                             else
@@ -828,10 +819,20 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                                 runSpacing: 6,
                                 children: applicants
                                     .map(
-                                      (applicant) => Chip(
-                                        label: Text(applicant['name'] ?? '-'),
-                                        backgroundColor: const Color(0xFFF1F5F9),
-                                      ),
+                                      (applicant) {
+                                        final name = applicant['name']?.toString() ?? '-';
+                                        final status = applicant['status'] as ApplicantStatus? ?? ApplicantStatus.applied;
+                                        final isConfirmed = status == ApplicantStatus.confirmed;
+                                        return Chip(
+                                          label: Text(isConfirmed ? '$name · 확정' : name),
+                                          backgroundColor: isConfirmed
+                                              ? const Color(0xFFDCFCE7)
+                                              : const Color(0xFFF1F5F9),
+                                          labelStyle: TextStyle(
+                                            color: isConfirmed ? const Color(0xFF166534) : const Color(0xFF475569),
+                                          ),
+                                        );
+                                      },
                                     )
                                     .toList(),
                               ),
@@ -1047,11 +1048,14 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     });
   }
 
-  Widget _buildTodayWorkerCard(int index, Map<String, dynamic> worker) {
+  Widget _buildTodayWorkerCard(Map<String, dynamic> worker) {
     final approved = worker['approved'] == true;
     final selectedLabor = worker['labor'] as String? ?? '1.0';
     final rating = worker['attitude'] as int? ?? 0;
     final customLabor = (worker['customLabor'] as String? ?? '').trim();
+    final entryKey = (worker['entryKey']?.toString() ?? '').trim();
+    final controllerKey = entryKey.isEmpty ? 'local-${worker['phone'] ?? worker['name'] ?? 'worker'}' : entryKey;
+    final laborController = _customLaborControllerFor(controllerKey, customLabor);
     final canApprove = _isWorkerReadyForApproval(worker);
     final statusColor = approved ? const Color(0xFF16A34A) : const Color(0xFF2563EB);
     final statusBg = approved ? const Color(0xFFDCFCE7) : const Color(0xFFEFF6FF);
@@ -1111,10 +1115,15 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                     ? null
                     : (_) {
                         setState(() {
-                          _todayWorkers[index]['labor'] = value;
                           if (value != 'custom') {
-                            _customLaborControllers[index].text = '';
-                            _todayWorkers[index]['customLabor'] = '';
+                            laborController.text = '';
+                          }
+                          if (entryKey.isNotEmpty) {
+                            MockBackend.updateWorkEntry(
+                              entryKey: entryKey,
+                              labor: value,
+                              customLabor: value == 'custom' ? customLabor : '',
+                            );
                           }
                         });
                       },
@@ -1128,7 +1137,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
           if (selectedLabor == 'custom') ...[
             const SizedBox(height: 10),
             TextField(
-              controller: _customLaborControllers[index],
+              controller: laborController,
               enabled: !approved,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
@@ -1136,7 +1145,12 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                 hintText: '예: 1.2',
                 filled: true,
               ),
-              onChanged: (value) => setState(() => _todayWorkers[index]['customLabor'] = value),
+              onChanged: (value) {
+                if (entryKey.isNotEmpty) {
+                  MockBackend.updateWorkEntry(entryKey: entryKey, customLabor: value);
+                }
+                setState(() {});
+              },
             ),
           ],
           const SizedBox(height: 12),
@@ -1147,7 +1161,12 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
               _buildStarRating(
                 rating: rating,
                 enabled: !approved,
-                onChanged: (value) => setState(() => _todayWorkers[index]['attitude'] = value),
+                onChanged: (value) {
+                  if (entryKey.isNotEmpty) {
+                    MockBackend.updateWorkEntry(entryKey: entryKey, attitude: value);
+                  }
+                  setState(() {});
+                },
               ),
               const SizedBox(width: 8),
               Text(
@@ -1163,7 +1182,12 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
               ElevatedButton(
                 onPressed: approved || !canApprove
                     ? null
-                    : () => setState(() => _todayWorkers[index]['approved'] = true),
+                    : () {
+                        if (entryKey.isNotEmpty) {
+                          MockBackend.updateWorkEntry(entryKey: entryKey, approved: true);
+                        }
+                        setState(() {});
+                      },
                 child: Text(approved ? '승인 완료' : '최종 승인'),
               ),
             ],
@@ -1211,7 +1235,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
 
   String _twoDigits(int value) => value.toString().padLeft(2, '0');
 
-  Future<void> _generateAttendanceQr(BuildContext context, String siteName) async {
+  Future<void> _generateAttendanceQr(BuildContext context, Map<String, dynamic> site) async {
     final connectivity = await Connectivity().checkConnectivity();
     if (connectivity == ConnectivityResult.none) {
       if (!context.mounted) return;
@@ -1221,7 +1245,10 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
       return;
     }
     setState(() {
-      _attendanceQr = AttendanceQrPayload.create(siteName: siteName);
+      _attendanceQr = AttendanceQrPayload.create(
+        siteName: site['name']?.toString() ?? '-',
+        siteId: site['id']?.toString(),
+      );
     });
   }
 
