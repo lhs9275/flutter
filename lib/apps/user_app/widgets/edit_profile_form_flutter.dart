@@ -5,6 +5,7 @@ class EditProfileFormFlutter extends StatelessWidget {
     super.key,
     required this.onCancel,
     required this.onSave,
+    required this.addressController,
     required this.preferredRegions,
     required this.regionInputController,
     required this.onAddRegion,
@@ -15,6 +16,7 @@ class EditProfileFormFlutter extends StatelessWidget {
 
   final VoidCallback onCancel;
   final VoidCallback onSave;
+  final TextEditingController addressController;
   final List<String> preferredRegions;
   final TextEditingController regionInputController;
   final bool Function(String region) onAddRegion;
@@ -45,6 +47,11 @@ class EditProfileFormFlutter extends StatelessWidget {
         const Text('프로필 수정', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
         TextField(decoration: const InputDecoration(labelText: '이름', filled: true)),
+        const SizedBox(height: 12),
+        TextField(
+          controller: addressController,
+          decoration: const InputDecoration(labelText: '주소', filled: true),
+        ),
         const SizedBox(height: 12),
         const Align(
           alignment: Alignment.centerLeft,

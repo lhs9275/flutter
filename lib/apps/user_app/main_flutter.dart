@@ -54,6 +54,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _idNumberController = TextEditingController();
   final TextEditingController _nationalityController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
   final TextEditingController _regionInputController = TextEditingController();
   final TextEditingController _bankController = TextEditingController();
   final TextEditingController _accountController = TextEditingController();
@@ -100,6 +101,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     _nameController.dispose();
     _idNumberController.dispose();
     _nationalityController.dispose();
+    _addressController.dispose();
     _regionInputController.dispose();
     _bankController.dispose();
     _accountController.dispose();
@@ -450,6 +452,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
               ? '김테스트'
               : (_nameController.text.trim().isEmpty ? '사용자' : _nameController.text.trim()),
           phone: _phoneController.text.isEmpty ? '-' : _formatPhone(_phoneController.text),
+          address: _addressController.text.trim().isEmpty ? '-' : _addressController.text.trim(),
           regions: preferredRegions,
           onEditProfile: () => setState(() => _view = UserView.editProfile),
         );
@@ -532,6 +535,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
             nameController: _nameController,
             idNumberController: _idNumberController,
             nationalityController: _nationalityController,
+            addressController: _addressController,
             regionInputController: _regionInputController,
             preferredRegions: _preferredRegions,
             onAddRegion: _addPreferredRegion,
@@ -574,6 +578,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
           child: EditProfileFormFlutter(
             onCancel: () => setState(() => _view = UserView.sites),
             onSave: () => setState(() => _view = UserView.sites),
+            addressController: _addressController,
             preferredRegions: _preferredRegions,
             regionInputController: _regionInputController,
             onAddRegion: _addPreferredRegion,

@@ -24,6 +24,11 @@ class MapLauncherCardFlutter extends StatelessWidget {
 
   String get _displayTitle => name.trim().isEmpty ? address : name;
 
+  Uri _naverSearchUrl(String query) {
+    final encoded = Uri.encodeComponent(query.isEmpty ? address : query);
+    return Uri.https('map.naver.com', '/v5/search/$encoded');
+  }
+
   Future<void> _launchWithFallback(
     BuildContext context,
     Uri primary,
@@ -45,7 +50,19 @@ class MapLauncherCardFlutter extends StatelessWidget {
   }
 
   Future<void> _openNaver(BuildContext context) async {
+    final query = _displayTitle.trim().isEmpty ? address : _displayTitle.trim();
+    final webFallback = _naverSearchUrl(query);
     if (!_hasCoords) {
+      final opened = await launchUrl(webFallback, mode: LaunchMode.externalApplication);
+      if (opened) return;
+      final store = _platformStoreUrl(
+        androidUrl: 'https://play.google.com/store/apps/details?id=com.nhn.android.nmap',
+        iosUrl: 'https://apps.apple.com/app/id311867728',
+      );
+      if (store != null) {
+        final storeOpened = await launchUrl(store, mode: LaunchMode.externalApplication);
+        if (storeOpened) return;
+      }
       _notifyMissingCoords(context);
       return;
     }
@@ -65,7 +82,18 @@ class MapLauncherCardFlutter extends StatelessWidget {
       iosUrl: 'https://apps.apple.com/app/id311867728',
     );
 
-    await _launchWithFallback(context, appUri, fallback);
+    final opened = await launchUrl(appUri, mode: LaunchMode.externalApplication);
+    if (opened) return;
+    final webOpened = await launchUrl(webFallback, mode: LaunchMode.externalApplication);
+    if (webOpened) return;
+    if (fallback != null) {
+      final storeOpened = await launchUrl(fallback, mode: LaunchMode.externalApplication);
+      if (storeOpened) return;
+    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('지도를 열 수 없습니다. 앱 설치 여부를 확인해주세요.')),
+    );
   }
 
   Uri? _platformStoreUrl({required String androidUrl, required String iosUrl}) {
@@ -82,7 +110,7 @@ class MapLauncherCardFlutter extends StatelessWidget {
 
   void _notifyMissingCoords(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('좌표 정보가 없어 지도를 열 수 없습니다.')),
+      const SnackBar(content: Text('지도를 열 수 없습니다. 주소 또는 앱 설치 여부를 확인해주세요.')),
     );
   }
 

@@ -8,6 +8,7 @@ class RegistrationFormFlutter extends StatefulWidget {
     required this.nameController,
     required this.idNumberController,
     required this.nationalityController,
+    required this.addressController,
     required this.regionInputController,
     required this.preferredRegions,
     required this.onAddRegion,
@@ -26,6 +27,7 @@ class RegistrationFormFlutter extends StatefulWidget {
   final TextEditingController nameController;
   final TextEditingController idNumberController;
   final TextEditingController nationalityController;
+  final TextEditingController addressController;
   final TextEditingController regionInputController;
   final List<String> preferredRegions;
   final bool Function(String region) onAddRegion;
@@ -208,6 +210,11 @@ class _RegistrationFormFlutterState extends State<RegistrationFormFlutter> {
         TextField(
           controller: widget.nationalityController,
           decoration: const InputDecoration(labelText: '국적', filled: true),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: widget.addressController,
+          decoration: const InputDecoration(labelText: '주소', filled: true),
         ),
         const SizedBox(height: 12),
         const Align(

@@ -5,12 +5,14 @@ class UserInfoViewFlutter extends StatelessWidget {
     super.key,
     required this.name,
     required this.phone,
+    required this.address,
     required this.regions,
     required this.onEditProfile,
   });
 
   final String name;
   final String phone;
+  final String address;
   final List<String> regions;
   final VoidCallback onEditProfile;
 
@@ -37,6 +39,7 @@ class UserInfoViewFlutter extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text('이름: $name'),
                     Text('휴대폰: $phone'),
+                    Text('주소: $address'),
                     Text('선호 지역: ${regions.isEmpty ? '-' : regions.join(', ')}'),
                   ],
                 ),
