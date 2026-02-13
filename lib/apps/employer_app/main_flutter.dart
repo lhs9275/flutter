@@ -913,6 +913,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                     border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
                         child: Column(
@@ -926,6 +927,29 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                             Text(
                               '${worker['role']} · ${worker['phone']}',
                               style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                OutlinedButton(
+                                  onPressed: () => _adjustNoShow(context, worker['phone'] as String? ?? '', 1),
+                                  child: const Text('노쇼 +1'),
+                                ),
+                                OutlinedButton(
+                                  onPressed: (worker['noShowCount'] as int? ?? 0) > 0
+                                      ? () => _adjustNoShow(context, worker['phone'] as String? ?? '', -1)
+                                      : null,
+                                  child: const Text('노쇼 -1'),
+                                ),
+                                TextButton(
+                                  onPressed: (worker['noShowCount'] as int? ?? 0) > 0
+                                      ? () => _resetNoShow(context, worker['phone'] as String? ?? '')
+                                      : null,
+                                  child: const Text('초기화'),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -1046,6 +1070,24 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
       _requestCountController.text = '1';
       _requestMemoController.clear();
     });
+  }
+
+  void _adjustNoShow(BuildContext context, String phone, int delta) {
+    if (phone.trim().isEmpty) return;
+    final next = MockBackend.adjustNoShowCount(phone: phone, delta: delta);
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('노쇼 ${next}회로 업데이트되었습니다.')),
+    );
+  }
+
+  void _resetNoShow(BuildContext context, String phone) {
+    if (phone.trim().isEmpty) return;
+    MockBackend.resetNoShowCount(phone: phone);
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('노쇼 횟수가 초기화되었습니다.')),
+    );
   }
 
   Widget _buildTodayWorkerCard(Map<String, dynamic> worker) {

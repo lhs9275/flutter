@@ -13,6 +13,8 @@ class JobRequestManagementFlutter extends StatelessWidget {
     required this.onResetAssignments,
     required this.onConfirmApplicantPriority,
     required this.onConfirmApplicantSequence,
+    required this.onAdjustNoShow,
+    required this.onResetNoShow,
   });
 
   final List<Map<String, dynamic>> requests;
@@ -24,6 +26,8 @@ class JobRequestManagementFlutter extends StatelessWidget {
   final ValueChanged<String> onResetAssignments;
   final void Function(String jobId, String phone) onConfirmApplicantPriority;
   final void Function(String jobId, String phone) onConfirmApplicantSequence;
+  final void Function(String phone, int delta) onAdjustNoShow;
+  final void Function(String phone) onResetNoShow;
 
   Color _statusColor(JobRequestStatus status) {
     switch (status) {
@@ -233,6 +237,7 @@ class JobRequestManagementFlutter extends StatelessWidget {
                     final applicantStatus =
                         applicant['status'] as ApplicantStatus? ?? ApplicantStatus.applied;
                     final isConfirmed = applicantStatus == ApplicantStatus.confirmed;
+                    final noShowCount = applicant['noShowCount'] as int? ?? 0;
                     final statusChipColor =
                         isConfirmed ? const Color(0xFF16A34A) : const Color(0xFF2563EB);
                     final alreadyAssigned = assignedPriority.contains(name) || assignedSequence.contains(name);
@@ -287,6 +292,43 @@ class JobRequestManagementFlutter extends StatelessWidget {
                                       ? () => onConfirmApplicantSequence(request['id'] as String, phone)
                                       : null,
                                   child: const Text('순차 확정'),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (isConfirmed) ...[
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEE2E2),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(color: const Color(0xFFFCA5A5)),
+                                  ),
+                                  child: Text(
+                                    '노쇼 ${noShowCount}회',
+                                    style: const TextStyle(
+                                      color: Color(0xFFB91C1C),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                OutlinedButton(
+                                  onPressed: () => onAdjustNoShow(phone, 1),
+                                  child: const Text('노쇼 +1'),
+                                ),
+                                OutlinedButton(
+                                  onPressed: noShowCount > 0 ? () => onAdjustNoShow(phone, -1) : null,
+                                  child: const Text('노쇼 -1'),
+                                ),
+                                TextButton(
+                                  onPressed: noShowCount > 0 ? () => onResetNoShow(phone) : null,
+                                  child: const Text('초기화'),
                                 ),
                               ],
                             ),

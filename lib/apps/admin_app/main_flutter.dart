@@ -157,6 +157,8 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
           onResetAssignments: _resetAssignments,
           onConfirmApplicantPriority: _confirmApplicantPriority,
           onConfirmApplicantSequence: _confirmApplicantSequence,
+          onAdjustNoShow: _adjustApplicantNoShow,
+          onResetNoShow: _resetApplicantNoShow,
         );
       case AdminView.dailyWork:
         return const DailyWorkManagementFlutter();
@@ -260,6 +262,24 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
         const SnackBar(content: Text('확정 처리에 실패했습니다.')),
       );
     }
+  }
+
+  void _adjustApplicantNoShow(String phone, int delta) {
+    if (phone.trim().isEmpty) return;
+    final next = MockBackend.adjustNoShowCount(phone: phone, delta: delta);
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('노쇼 ${next}회로 업데이트되었습니다.')),
+    );
+  }
+
+  void _resetApplicantNoShow(String phone) {
+    if (phone.trim().isEmpty) return;
+    MockBackend.resetNoShowCount(phone: phone);
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('노쇼 횟수가 초기화되었습니다.')),
+    );
   }
 
   Widget _buildHome() {

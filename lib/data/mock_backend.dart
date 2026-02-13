@@ -204,6 +204,61 @@ class MockBackend {
     return _normalizePhone(a) == _normalizePhone(b);
   }
 
+  static int noShowCountForPhone(String phone) {
+    final normalized = _normalizePhone(phone);
+    var maxCount = 0;
+    for (final job in jobRequests) {
+      final applicants = List<Map<String, dynamic>>.from(job['applicants'] as List? ?? []);
+      for (final applicant in applicants) {
+        if (_normalizePhone(applicant['phone']?.toString() ?? '') != normalized) continue;
+        final count = applicant['noShowCount'] as int? ?? 0;
+        if (count > maxCount) {
+          maxCount = count;
+        }
+      }
+    }
+    return maxCount;
+  }
+
+  static void _setNoShowCount(String phone, int count) {
+    final normalized = _normalizePhone(phone);
+    for (var i = 0; i < jobRequests.length; i += 1) {
+      final job = Map<String, dynamic>.from(jobRequests[i]);
+      final applicants = List<Map<String, dynamic>>.from(job['applicants'] as List? ?? []);
+      var changed = false;
+      for (var j = 0; j < applicants.length; j += 1) {
+        final applicant = Map<String, dynamic>.from(applicants[j]);
+        if (_normalizePhone(applicant['phone']?.toString() ?? '') != normalized) continue;
+        applicant['noShowCount'] = count;
+        applicants[j] = applicant;
+        changed = true;
+      }
+      if (changed) {
+        job['applicants'] = applicants;
+        jobRequests[i] = job;
+      }
+    }
+    if (workEntries.isNotEmpty) {
+      for (final entry in workEntries.values) {
+        final entryPhone = entry['phoneKey']?.toString() ?? '';
+        if (entryPhone == normalized) {
+          entry['noShowCount'] = count;
+        }
+      }
+    }
+  }
+
+  static int adjustNoShowCount({required String phone, int delta = 1}) {
+    final current = noShowCountForPhone(phone);
+    final next = (current + delta).clamp(0, 9999).toInt();
+    _setNoShowCount(phone, next);
+    return next;
+  }
+
+  static void resetNoShowCount({required String phone}) {
+    _setNoShowCount(phone, 0);
+  }
+
   static String _workEntryKey(String date, String siteId, String phone) {
     return '$date|$siteId|${_normalizePhone(phone)}';
   }
@@ -218,20 +273,7 @@ class MockBackend {
   }
 
   static int _lookupNoShowCount(String siteId, String phone) {
-    final normalized = _normalizePhone(phone);
-    var maxCount = 0;
-    for (final job in jobRequests) {
-      if (job['siteId'] != siteId) continue;
-      final applicants = List<Map<String, dynamic>>.from(job['applicants'] as List? ?? []);
-      for (final applicant in applicants) {
-        if (_normalizePhone(applicant['phone']?.toString() ?? '') != normalized) continue;
-        final count = applicant['noShowCount'] as int? ?? 0;
-        if (count > maxCount) {
-          maxCount = count;
-        }
-      }
-    }
-    return maxCount;
+    return noShowCountForPhone(phone);
   }
 
   static bool _isConfirmedForSite(String siteId, String phone) {
@@ -419,13 +461,14 @@ class MockBackend {
     final exists = applicants.any((item) => _samePhone(item['phone']?.toString() ?? '', phone));
     if (exists) return false;
     final normalized = _normalizePhone(phone);
+    final noShowCount = noShowCountForPhone(phone);
     applicants.add({
       'name': name,
       'phone': phone,
       'phoneKey': normalized,
       'status': ApplicantStatus.applied,
       'assignedType': null,
-      'noShowCount': 0,
+      'noShowCount': noShowCount,
     });
     job['applicants'] = applicants;
     jobRequests[index] = job;
@@ -578,7 +621,7 @@ class MockBackend {
         final phone = applicant['phone']?.toString() ?? '';
         if (phone.isEmpty) continue;
         final key = _normalizePhone(phone);
-        final noShowCount = applicant['noShowCount'] as int? ?? 0;
+        final noShowCount = noShowCountForPhone(phone);
         if (byPhone.containsKey(key)) {
           final existing = byPhone[key]!;
           final existingNoShow = existing['noShowCount'] as int? ?? 0;
