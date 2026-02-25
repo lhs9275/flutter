@@ -1,8 +1,14 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../data/cwmp_api_models.dart';
+import '../../data/cwmp_api_repository.dart';
+import '../../data/cwmp_session_store.dart';
+import '../../data/cwmp_user_app_adapter.dart';
 import '../../data/mock_backend.dart';
+import '../../widgets/remote_status_banner_flutter.dart';
+import 'data/region_code_catalog.dart';
 import 'models/application_record.dart';
 import 'screens/calendar_view_flutter.dart';
 import 'screens/game_center_flutter.dart';
@@ -18,7 +24,13 @@ import 'widgets/header_flutter.dart';
 import 'widgets/keyword_input_flutter.dart';
 import 'widgets/login_flutter.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (_) {
+    // Allow standalone preview without .env.
+  }
   runApp(const UserAppFlutter());
 }
 
@@ -43,6 +55,8 @@ class UserAppFlutter extends StatefulWidget {
 }
 
 class _UserAppFlutterState extends State<UserAppFlutter> {
+  static const String _kPrefShowAllRegions = 'cwmp_user_show_all_regions';
+
   late UserView _view;
   SiteTab _tab = SiteTab.list;
   bool _rememberMe = true;
@@ -61,18 +75,31 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
   final TextEditingController _ownerController = TextEditingController();
   String _gender = 'male';
   String? _sentOtp;
+  bool _isAuthLoading = false;
+  bool _isSitesLoading = false;
+  bool _isProfileSaving = false;
+  bool _isSiteDetailLoading = false;
+  bool _isSiteDetailNavLinksLoading = false;
+  String? _sitesLoadError;
+  String? _siteDetailLoadError;
+  String? _siteDetailNavLinksError;
+  CwmpSessionSnapshot? _session;
+  List<Map<String, dynamic>> _remoteSites = const [];
+  CwmpSiteNavigationLinksResponse? _siteDetailNavLinks;
   final Set<String> _verifiedPhones = {};
   final Set<String> _registeredPhones = {'01011112222'};
   final List<String> _preferredRegions = [];
   final Map<String, ApplicationRecord> _applications = {};
-  final Random _random = Random();
 
   static const Color _accent = Color(0xFF6366F1);
 
   final ThemeData _theme = ThemeData(
     brightness: Brightness.light,
     scaffoldBackgroundColor: const Color(0xFFF1F5F9),
-    colorScheme: ColorScheme.fromSeed(seedColor: _accent, brightness: Brightness.light),
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: _accent,
+      brightness: Brightness.light,
+    ),
     primaryColor: _accent,
     appBarTheme: const AppBarTheme(
       backgroundColor: Color(0xFFF8FAFC),
@@ -82,7 +109,12 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     useMaterial3: false,
   );
 
-  List<Map<String, dynamic>> get _sites => MockBackend.approvedJobPosts();
+  bool get _hasRemoteSession => _session?.hasToken ?? false;
+
+  List<Map<String, dynamic>> get _sites {
+    if (_hasRemoteSession) return List<Map<String, dynamic>>.from(_remoteSites);
+    return MockBackend.approvedJobPosts();
+  }
 
   @override
   void initState() {
@@ -92,6 +124,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     if (phone.isNotEmpty) {
       _phoneController.text = phone;
     }
+    _bootstrapSession();
   }
 
   @override
@@ -114,68 +147,444 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
   }
 
   bool _isKnownUser(String phone) {
-    return _registeredPhones.contains(_normalizePhone(phone));
+    final normalized = _normalizePhone(phone);
+    if (normalized.isEmpty) return false;
+    if (_session != null && _session!.phoneNumber == normalized) return true;
+    return _registeredPhones.contains(normalized);
   }
 
-  void _handleLogin(BuildContext context) {
-    final raw = _phoneController.text.trim();
-    final normalized = _normalizePhone(raw);
-    if (normalized.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('휴대폰 번호를 입력해주세요.')),
-      );
+  Future<void> _bootstrapSession() async {
+    await _restoreUiPreferences();
+    final session = await CwmpSessionStore.read();
+    if (!mounted) return;
+    if (session == null) {
       return;
     }
-    _phoneController.text = normalized;
-    if (_verifiedPhones.contains(normalized)) {
+    setState(() {
+      _session = session;
+      if (_view == UserView.login) {
+        _view = UserView.sites;
+      }
+      if (_phoneController.text.trim().isEmpty) {
+        _phoneController.text = session.phoneNumber;
+      }
+      if ((_nameController.text.trim().isEmpty) &&
+          (session.name?.trim().isNotEmpty ?? false)) {
+        _nameController.text = session.name!.trim();
+      }
+    });
+    await _loadRemotePreferences();
+    await _refreshRemoteSites();
+  }
+
+  Future<void> _refreshRemoteSites() async {
+    if (!_hasRemoteSession) return;
+    if (mounted) {
       setState(() {
-        _view = _isKnownUser(normalized) ? UserView.sites : UserView.register;
+        _isSitesLoading = true;
+        _sitesLoadError = null;
+      });
+    }
+    try {
+      final posts = await CwmpApiRepository.instance.getJobPosts(
+        includeOtherRegions: _showAllRegions,
+      );
+      List<CwmpMatchSelectionResponse> myMatches = const [];
+      var matchesLoaded = false;
+      String? matchesLoadError;
+      try {
+        myMatches = await CwmpApiRepository.instance.getMyMatches();
+        matchesLoaded = true;
+      } on CwmpApiException catch (e) {
+        if (e.statusCode == 401) rethrow;
+        matchesLoadError = '지원 상태를 불러오지 못했습니다: ${e.message}';
+      } catch (e) {
+        matchesLoadError = '지원 상태를 불러오지 못했습니다: $e';
+      }
+      if (!mounted) return;
+      setState(() {
+        _remoteSites = posts.map(CwmpUserAppAdapter.toSiteMap).toList();
+        if (matchesLoaded) {
+          _replaceApplicationsFromRemoteMatches(myMatches);
+        }
+        if ((matchesLoadError ?? '').isNotEmpty) {
+          _sitesLoadError = matchesLoadError;
+        }
+      });
+    } on CwmpApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _sitesLoadError = e.message);
+      if (e.statusCode == 401) {
+        await _handleSessionExpired(showMessage: false);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _sitesLoadError = '공고 목록을 불러오지 못했습니다: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isSitesLoading = false);
+      }
+    }
+  }
+
+  void _handleToggleShowAllRegions(bool value) {
+    if (_showAllRegions == value) return;
+    setState(() => _showAllRegions = value);
+    _persistShowAllRegionsPreference(value);
+    if (_hasRemoteSession) {
+      _refreshRemoteSites();
+    }
+  }
+
+  Future<void> _restoreUiPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getBool(_kPrefShowAllRegions) ?? false;
+    if (!mounted) return;
+    if (_showAllRegions == value) return;
+    setState(() => _showAllRegions = value);
+  }
+
+  Future<void> _persistShowAllRegionsPreference(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kPrefShowAllRegions, value);
+  }
+
+  Future<void> _refreshSelectedSiteDetail() async {
+    if (!_hasRemoteSession) return;
+    final current = _selectedSite;
+    if (current == null) return;
+    if (current['source']?.toString() != 'cwmp') return;
+    final jobPostId = CwmpUserAppAdapter.jobPostIdFromSite(current);
+    if (jobPostId == null) return;
+
+    setState(() {
+      _isSiteDetailLoading = true;
+      _siteDetailLoadError = null;
+    });
+    try {
+      final detail = await CwmpApiRepository.instance.getJobPostDetail(
+        jobPostId,
+      );
+      final mapped = CwmpUserAppAdapter.toSiteMap(detail);
+      if (!mounted) return;
+      setState(() {
+        final selectedId = _selectedSite?['id']?.toString();
+        if (selectedId == mapped['id']?.toString()) {
+          _selectedSite = mapped;
+        }
+        final index = _remoteSites.indexWhere(
+          (site) => site['id']?.toString() == mapped['id']?.toString(),
+        );
+        if (index >= 0) {
+          _remoteSites[index] = mapped;
+        }
+      });
+      await _refreshSelectedSiteNavigationLinks();
+    } on CwmpApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 401) {
+        await _handleSessionExpired(showMessage: false);
+        return;
+      }
+      setState(() => _siteDetailLoadError = e.message);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _siteDetailLoadError = '공고 상세를 불러오지 못했습니다: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isSiteDetailLoading = false);
+      }
+    }
+  }
+
+  void _openSiteDetail(Map<String, dynamic> site) {
+    setState(() {
+      _selectedSite = site;
+      _siteDetailLoadError = null;
+      _siteDetailNavLinks = null;
+      _siteDetailNavLinksError = null;
+      _isSiteDetailNavLinksLoading = false;
+      _view = UserView.siteDetail;
+    });
+    _refreshSelectedSiteDetail();
+  }
+
+  int? _selectedSiteCwmpSiteId() {
+    final raw = _selectedSite?['cwmpSiteId'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '');
+  }
+
+  Future<void> _refreshSelectedSiteNavigationLinks() async {
+    if (!_hasRemoteSession) return;
+    final siteId = _selectedSiteCwmpSiteId();
+    if (siteId == null) {
+      if (!mounted) return;
+      setState(() {
+        _siteDetailNavLinks = null;
+        _siteDetailNavLinksError =
+            '현장 ID(siteId)를 읽지 못해 네비 링크를 조회할 수 없습니다. 공고 상세를 새로고침해 주세요.';
+        _isSiteDetailNavLinksLoading = false;
       });
       return;
     }
-    _sendOtp(normalized);
-  }
 
-  void _sendOtp(String phone) {
-    final code = (_random.nextInt(900000) + 100000).toString();
     setState(() {
-      _sentOtp = code;
-      _otpController.clear();
-      _view = UserView.authenticate;
+      _isSiteDetailNavLinksLoading = true;
+      _siteDetailNavLinksError = null;
     });
+    try {
+      final links = await CwmpApiRepository.instance.getSiteNavigationLinks(
+        siteId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _siteDetailNavLinks = links;
+      });
+    } on CwmpApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 401) {
+        await _handleSessionExpired(showMessage: false);
+        return;
+      }
+      setState(() => _siteDetailNavLinksError = e.message);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _siteDetailNavLinksError = '네비 링크를 불러오지 못했습니다: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isSiteDetailNavLinksLoading = false);
+      }
+    }
   }
 
-  void _handleAuthSuccess(BuildContext context) {
-    final input = _otpController.text.trim();
-    final expected = _sentOtp;
-    if (expected == null || input != expected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('인증번호가 올바르지 않습니다.')),
+  void _replaceApplicationsFromRemoteMatches(
+    List<CwmpMatchSelectionResponse> matches,
+  ) {
+    final next = <String, ApplicationRecord>{};
+    final seenJobPostIds = <int>{};
+
+    for (final match in matches) {
+      final jobPostId = match.jobPostId;
+      if (jobPostId <= 0) continue;
+      if (!seenJobPostIds.add(jobPostId)) continue;
+
+      final normalized = match.status.trim().toUpperCase();
+      ApplicationStatus? status;
+      switch (normalized) {
+        case 'CONFIRMED':
+          status = ApplicationStatus.confirmed;
+          break;
+        case 'APPLIED':
+        case 'PREFERRED':
+          status = ApplicationStatus.applied;
+          break;
+        case 'CANCELLED':
+        case 'NO_SHOW':
+        default:
+          status = null;
+          break;
+      }
+      if (status == null) continue;
+
+      next[jobPostId.toString()] = ApplicationRecord(
+        status: status,
+        appliedAt: DateTime.now(),
+        confirmedAt: status == ApplicationStatus.confirmed
+            ? DateTime.now()
+            : null,
       );
+    }
+
+    _applications
+      ..clear()
+      ..addAll(next);
+  }
+
+  Future<void> _loadRemotePreferences() async {
+    if (!_hasRemoteSession) return;
+    try {
+      final regions = await CwmpApiRepository.instance.getPreferenceRegions();
+      if (!mounted) return;
+      final codes =
+          regions
+              .map((e) => e.regionCode.trim())
+              .where((e) => e.isNotEmpty)
+              .toList()
+            ..sort((a, b) {
+              final aPriority =
+                  regions
+                      .firstWhere((r) => r.regionCode.trim() == a)
+                      .priority ??
+                  9999;
+              final bPriority =
+                  regions
+                      .firstWhere((r) => r.regionCode.trim() == b)
+                      .priority ??
+                  9999;
+              return aPriority.compareTo(bPriority);
+            });
+      if (codes.isEmpty) return;
+      setState(() {
+        _preferredRegions
+          ..clear()
+          ..addAll(codes);
+      });
+    } catch (_) {
+      // Preferences are optional for now. Keep local state when loading fails.
+    }
+  }
+
+  Future<void> _handleSessionExpired({bool showMessage = true}) async {
+    await CwmpSessionStore.clear();
+    if (!mounted) return;
+    setState(() {
+      _session = null;
+      _remoteSites = const [];
+      _siteDetailNavLinks = null;
+      _siteDetailLoadError = null;
+      _siteDetailNavLinksError = null;
+      _isSiteDetailLoading = false;
+      _isSiteDetailNavLinksLoading = false;
+      _view = UserView.login;
+    });
+    if (showMessage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('로그인 세션이 만료되었습니다. 다시 인증해주세요.')),
+      );
+    }
+  }
+
+  CwmpUserRole _userAppRole() => CwmpUserRole.worker;
+
+  Future<void> _handleLogin(BuildContext context) async {
+    if (_isAuthLoading) return;
+    final raw = _phoneController.text.trim();
+    final normalized = _normalizePhone(raw);
+    if (normalized.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('휴대폰 번호를 입력해주세요.')));
       return;
     }
-    final phone = _phoneController.text.trim();
-    _verifiedPhones.add(phone);
-    setState(() {
-      _view = _isKnownUser(phone) ? UserView.sites : UserView.register;
-    });
+    _phoneController.text = normalized;
+    await _sendOtp(normalized);
   }
 
-  void _handleRegister() {
+  Future<void> _sendOtp(String phone) async {
+    if (_isAuthLoading) return;
+    setState(() => _isAuthLoading = true);
+    try {
+      final response = await CwmpApiRepository.instance.requestPhoneAuth(
+        phoneNumber: phone,
+        role: _userAppRole(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _sentOtp = response.debugCode;
+        _otpController.clear();
+        _view = UserView.authenticate;
+        if (response.phoneNumber.isNotEmpty) {
+          _phoneController.text = response.phoneNumber;
+        }
+      });
+    } on CwmpApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('인증번호 요청 중 오류가 발생했습니다: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isAuthLoading = false);
+      }
+    }
+  }
+
+  Future<void> _handleAuthSuccess(BuildContext context) async {
+    if (_isAuthLoading) return;
+    final input = _otpController.text.trim();
+    if (input.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('인증번호를 입력해주세요.')));
+      return;
+    }
+    final phone = _normalizePhone(_phoneController.text.trim());
+    if (phone.isEmpty) return;
+    setState(() => _isAuthLoading = true);
+    try {
+      final response = await CwmpApiRepository.instance.verifyPhoneAuth(
+        phoneNumber: phone,
+        code: input,
+        role: _userAppRole(),
+        name: _nameController.text.trim().isEmpty
+            ? null
+            : _nameController.text.trim(),
+      );
+      if (!mounted) return;
+      _verifiedPhones.add(phone);
+      setState(() {
+        _session = CwmpSessionSnapshot(
+          accessToken: response.tokens.accessToken,
+          refreshToken: response.tokens.refreshToken,
+          tokenType: response.tokens.tokenType,
+          userId: response.user.id,
+          phoneNumber: response.user.phoneNumber,
+          role: response.user.role,
+          name: response.user.name,
+        );
+        if (response.user.name?.trim().isNotEmpty ?? false) {
+          _nameController.text = response.user.name!.trim();
+        }
+        _view = response.firstLogin ? UserView.register : UserView.sites;
+      });
+      await _loadRemotePreferences();
+      await _refreshRemoteSites();
+    } on CwmpApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('인증 처리 중 오류가 발생했습니다: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isAuthLoading = false);
+      }
+    }
+  }
+
+  Future<void> _handleRegister(BuildContext context) async {
     final phone = _normalizePhone(_phoneController.text.trim());
     if (phone.isNotEmpty) {
       _registeredPhones.add(phone);
     }
+    await _savePreferencesToBackend(context);
+    if (!mounted) return;
     setState(() => _view = UserView.sites);
+    await _refreshRemoteSites();
   }
 
   String _currentUserName() {
+    final sessionName = _session?.name?.trim();
+    if (sessionName != null && sessionName.isNotEmpty) return sessionName;
     if (_isKnownUser(_phoneController.text)) return '김테스트';
     final name = _nameController.text.trim();
     return name.isEmpty ? '근로자' : name;
   }
 
   String _currentUserPhone() {
+    final sessionPhone = _session?.phoneNumber.trim() ?? '';
+    if (sessionPhone.isNotEmpty) return sessionPhone;
     final normalized = _normalizePhone(_phoneController.text.trim());
     return normalized.isEmpty ? '00000000000' : normalized;
   }
@@ -190,7 +599,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
   }
 
   bool _addPreferredRegion(String value) {
-    final region = value.trim();
+    final region = (extractPreferredRegionCode(value) ?? value.trim()).trim();
     if (region.isEmpty) return false;
     if (_preferredRegions.contains(region)) return false;
     setState(() {
@@ -216,7 +625,106 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     });
   }
 
-  ApplicantStatus? _backendApplicantStatus(String jobId) {
+  List<CwmpPreferenceRegionItem>? _buildPreferenceRegionPayload() {
+    final result = <CwmpPreferenceRegionItem>[];
+    for (var i = 0; i < _preferredRegions.length; i += 1) {
+      final raw = _preferredRegions[i].trim();
+      if (raw.isEmpty) continue;
+      final code = extractPreferredRegionCode(raw);
+      if (code == null) {
+        return null;
+      }
+      result.add(
+        CwmpPreferenceRegionItem(
+          regionCode: code,
+          regionName: preferredRegionNameByCode(code) ?? code,
+          priority: i,
+        ),
+      );
+    }
+    return result;
+  }
+
+  Future<void> _savePreferencesToBackend(BuildContext context) async {
+    if (!_hasRemoteSession) return;
+    if (_preferredRegions.isEmpty) return;
+    final payload = _buildPreferenceRegionPayload();
+    if (payload == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('선호지역 서버 저장은 지역코드 5자리(예: 11680) 입력 시 지원됩니다.'),
+        ),
+      );
+      return;
+    }
+    try {
+      final saved = await CwmpApiRepository.instance.savePreferenceRegions(
+        payload,
+      );
+      if (!mounted) return;
+      setState(() {
+        _preferredRegions
+          ..clear()
+          ..addAll(saved.map((e) => e.regionCode));
+      });
+    } on CwmpApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('선호지역 저장 실패: ${e.message}')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('선호지역 저장 중 오류가 발생했습니다: $e')));
+    }
+  }
+
+  Future<void> _saveProfileAndClose(BuildContext context) async {
+    if (_isProfileSaving) return;
+    setState(() => _isProfileSaving = true);
+    try {
+      await _savePreferencesToBackend(context);
+      if (!mounted) return;
+      setState(() => _view = UserView.sites);
+      await _refreshRemoteSites();
+    } finally {
+      if (mounted) {
+        setState(() => _isProfileSaving = false);
+      }
+    }
+  }
+
+  Future<void> _logout() async {
+    await CwmpSessionStore.clear();
+    if (!mounted) return;
+    setState(() {
+      _session = null;
+      _remoteSites = const [];
+      _sitesLoadError = null;
+      _phoneController.clear();
+      _otpController.clear();
+      _sentOtp = null;
+      _applications.clear();
+      _preferredRegions.clear();
+      _selectedRegionFilter = null;
+      _siteDetailNavLinks = null;
+      _siteDetailLoadError = null;
+      _siteDetailNavLinksError = null;
+      _isSiteDetailLoading = false;
+      _isSiteDetailNavLinksLoading = false;
+      _view = UserView.login;
+    });
+  }
+
+  ApplicantStatus? _mockBackendApplicantStatusForSite(
+    Map<String, dynamic> site,
+  ) {
+    if (site['source']?.toString() == 'cwmp') {
+      return null;
+    }
+    final jobId = site['id']?.toString();
+    if (jobId == null || jobId.isEmpty) return null;
     return MockBackend.applicantStatus(jobId, _currentUserPhone());
   }
 
@@ -224,7 +732,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     final id = site['id'] as String?;
     if (id == null) return null;
     final record = _applications[id];
-    final backendStatus = _backendApplicantStatus(id);
+    final backendStatus = _mockBackendApplicantStatusForSite(site);
     if (backendStatus == ApplicantStatus.confirmed) {
       return ApplicationRecord(
         status: ApplicationStatus.confirmed,
@@ -235,29 +743,33 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     return record;
   }
 
-  Future<void> _applyToSite(BuildContext context, Map<String, dynamic> site) async {
+  Future<void> _applyToSite(
+    BuildContext context,
+    Map<String, dynamic> site,
+  ) async {
     final id = site['id'] as String?;
     if (id == null) return;
     final record = _applications[id];
-    final backendStatus = _backendApplicantStatus(id);
+    final backendStatus = _mockBackendApplicantStatusForSite(site);
     if (backendStatus == ApplicantStatus.confirmed) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이미 확정된 공고입니다.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('이미 확정된 공고입니다.')));
       return;
     }
     if (backendStatus == ApplicantStatus.applied) {
       setState(() {
-        _applications[id] = (record ??
-                ApplicationRecord(
-                  status: ApplicationStatus.applied,
-                  appliedAt: DateTime.now(),
-                ))
-            .copyWith(status: ApplicationStatus.applied);
+        _applications[id] =
+            (record ??
+                    ApplicationRecord(
+                      status: ApplicationStatus.applied,
+                      appliedAt: DateTime.now(),
+                    ))
+                .copyWith(status: ApplicationStatus.applied);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이미 지원한 공고입니다.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('이미 지원한 공고입니다.')));
       return;
     }
     if (record != null && record.status == ApplicationStatus.confirmed) return;
@@ -267,12 +779,67 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
         title: const Text('지원하기'),
         content: Text('${site['name']} 현장에 지원하시겠습니까?'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('취소')),
-          ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('지원')),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('취소'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('지원'),
+          ),
         ],
       ),
     );
     if (approved != true) return;
+
+    if (site['source']?.toString() == 'cwmp') {
+      final jobPostId = CwmpUserAppAdapter.jobPostIdFromSite(site);
+      if (jobPostId == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('공고 ID를 확인할 수 없습니다.')));
+        return;
+      }
+      try {
+        final response = await CwmpApiRepository.instance.applyJobPost(
+          jobPostId,
+        );
+        if (!mounted) return;
+        final status = response.status.toUpperCase();
+        setState(() {
+          _applications[id] = ApplicationRecord(
+            status: status == 'CONFIRMED'
+                ? ApplicationStatus.confirmed
+                : ApplicationStatus.applied,
+            appliedAt: record?.appliedAt ?? DateTime.now(),
+            confirmedAt: status == 'CONFIRMED' ? DateTime.now() : null,
+          );
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              status == 'CONFIRMED' ? '지원이 확정되었습니다.' : '지원이 완료되었습니다.',
+            ),
+          ),
+        );
+      } on CwmpApiException catch (e) {
+        if (!mounted) return;
+        if (e.statusCode == 401) {
+          await _handleSessionExpired();
+          return;
+        }
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('지원 처리 중 오류가 발생했습니다: $e')));
+      }
+      return;
+    }
+
     setState(() {
       _applications[id] = ApplicationRecord(
         status: ApplicationStatus.applied,
@@ -284,20 +851,23 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
       name: _currentUserName(),
       phone: _currentUserPhone(),
     );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('지원이 완료되었습니다.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('지원이 완료되었습니다.')));
   }
 
-  Future<void> _cancelApplication(BuildContext context, Map<String, dynamic> site) async {
+  Future<void> _cancelApplication(
+    BuildContext context,
+    Map<String, dynamic> site,
+  ) async {
     final id = site['id'] as String?;
     if (id == null) return;
     final record = _applications[id];
-    final backendStatus = _backendApplicantStatus(id);
+    final backendStatus = _mockBackendApplicantStatusForSite(site);
     if (backendStatus == ApplicantStatus.confirmed) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('확정된 공고는 취소할 수 없습니다.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('확정된 공고는 취소할 수 없습니다.')));
       return;
     }
     if (record == null || record.status == ApplicationStatus.confirmed) return;
@@ -307,19 +877,56 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
         title: const Text('지원 취소'),
         content: Text('${site['name']} 지원을 취소하시겠습니까?'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('닫기')),
-          ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('취소하기')),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('닫기'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('취소하기'),
+          ),
         ],
       ),
     );
     if (approved != true) return;
+
+    if (site['source']?.toString() == 'cwmp') {
+      final jobPostId = CwmpUserAppAdapter.jobPostIdFromSite(site);
+      if (jobPostId == null) return;
+      try {
+        await CwmpApiRepository.instance.cancelJobPost(jobPostId);
+        if (!mounted) return;
+        setState(() {
+          _applications.remove(id);
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('지원이 취소되었습니다.')));
+      } on CwmpApiException catch (e) {
+        if (!mounted) return;
+        if (e.statusCode == 401) {
+          await _handleSessionExpired();
+          return;
+        }
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('지원 취소 중 오류가 발생했습니다: $e')));
+      }
+      return;
+    }
+
     setState(() {
       _applications.remove(id);
     });
     MockBackend.cancelApplication(jobId: id, phone: _currentUserPhone());
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('지원이 취소되었습니다.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('지원이 취소되었습니다.')));
   }
 
   PreferredSizeWidget? _buildAppBar() {
@@ -331,28 +938,50 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
       case UserView.register:
         return AppBar(title: const Text('회원가입'));
       case UserView.sites:
-        final name = _isKnownUser(_phoneController.text)
-            ? '김테스트'
-            : (_nameController.text.trim().isEmpty ? '사용자' : _nameController.text.trim());
+        final name = _currentUserName();
         return UserHeaderFlutter(
           title: '인력 관리 시스템',
           subtitle: '$name님 환영합니다.',
-          onLogout: () => setState(() {
-            _phoneController.clear();
-            _selectedRegionFilter = null;
-            _showAllRegions = false;
-            _view = UserView.login;
-          }),
+          onLogout: _logout,
         );
       case UserView.siteDetail:
+        final canRefreshDetail =
+            _hasRemoteSession && _selectedSite?['source']?.toString() == 'cwmp';
         return AppBar(
           title: const Text('현장 상세'),
-          leading: BackButton(onPressed: () => setState(() => _view = UserView.sites)),
+          leading: BackButton(
+            onPressed: () => setState(() {
+              _siteDetailNavLinks = null;
+              _siteDetailLoadError = null;
+              _siteDetailNavLinksError = null;
+              _isSiteDetailLoading = false;
+              _isSiteDetailNavLinksLoading = false;
+              _view = UserView.sites;
+            }),
+          ),
+          actions: [
+            if (canRefreshDetail)
+              IconButton(
+                onPressed: _isSiteDetailLoading
+                    ? null
+                    : _refreshSelectedSiteDetail,
+                icon: _isSiteDetailLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh),
+                tooltip: '공고 상세 새로고침',
+              ),
+          ],
         );
       case UserView.editProfile:
         return AppBar(
           title: const Text('프로필 수정'),
-          leading: BackButton(onPressed: () => setState(() => _view = UserView.sites)),
+          leading: BackButton(
+            onPressed: () => setState(() => _view = UserView.sites),
+          ),
         );
     }
   }
@@ -377,11 +1006,17 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
   Widget _buildSitesTabContent() {
     final preferredRegions = List<String>.from(_preferredRegions);
     final sites = _sites;
+    if (_tab == SiteTab.list &&
+        _hasRemoteSession &&
+        _isSitesLoading &&
+        sites.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
     final applicationSnapshot = <String, ApplicationRecord>{};
     for (final site in sites) {
       final id = site['id'] as String?;
       if (id == null) continue;
-      final backendStatus = _backendApplicantStatus(id);
+      final backendStatus = _mockBackendApplicantStatusForSite(site);
       final local = _applications[id];
       if (backendStatus == ApplicantStatus.confirmed) {
         applicationSnapshot[id] = ApplicationRecord(
@@ -402,12 +1037,13 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
         applicationSnapshot[id] = local;
       }
     }
-    final availableRegions = sites
-        .map((site) => site['region'] as String?)
-        .whereType<String>()
-        .toSet()
-        .toList()
-      ..sort();
+    final availableRegions =
+        sites
+            .map((site) => site['region'] as String?)
+            .whereType<String>()
+            .toSet()
+            .toList()
+          ..sort();
     if (preferredRegions.isNotEmpty) {
       for (final region in preferredRegions.reversed) {
         if (!availableRegions.contains(region)) {
@@ -423,21 +1059,32 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     );
     switch (_tab) {
       case SiteTab.list:
-        return SiteListFlutter(
+        final list = SiteListFlutter(
           sites: visibleSites,
           preferredRegions: preferredRegions,
           selectedRegion: _selectedRegionFilter,
           availableRegions: availableRegions,
           showAllRegions: _showAllRegions,
-          onToggleShowAll: (value) => setState(() => _showAllRegions = value),
-          onRegionSelected: (region) => setState(() => _selectedRegionFilter = region),
-          onViewDetail: (site) => setState(() {
-            _selectedSite = site;
-            _view = UserView.siteDetail;
-          }),
+          onToggleShowAll: _handleToggleShowAllRegions,
+          onRegionSelected: (region) =>
+              setState(() => _selectedRegionFilter = region),
+          onViewDetail: _openSiteDetail,
           onApply: (site) => _applyToSite(context, site),
           onCancel: (site) => _cancelApplication(context, site),
           applications: applicationSnapshot,
+          onRefresh: _hasRemoteSession ? _refreshRemoteSites : null,
+        );
+        return Column(
+          children: [
+            RemoteStatusBannerFlutter(
+              isLoading: _hasRemoteSession && _isSitesLoading,
+              error: _sitesLoadError,
+              infoMessage: _hasRemoteSession ? '실서버 공고 목록 기준' : null,
+              showInfoOnlyWhenNoError: true,
+              onRefresh: _hasRemoteSession ? _refreshRemoteSites : null,
+            ),
+            Expanded(child: list),
+          ],
         );
       case SiteTab.calendar:
         return const CalendarViewFlutter();
@@ -449,10 +1096,16 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
       case SiteTab.userInfo:
         return UserInfoViewFlutter(
           name: _isKnownUser(_phoneController.text)
-              ? '김테스트'
-              : (_nameController.text.trim().isEmpty ? '사용자' : _nameController.text.trim()),
-          phone: _phoneController.text.isEmpty ? '-' : _formatPhone(_phoneController.text),
-          address: _addressController.text.trim().isEmpty ? '-' : _addressController.text.trim(),
+              ? _currentUserName()
+              : (_nameController.text.trim().isEmpty
+                    ? '사용자'
+                    : _nameController.text.trim()),
+          phone: _currentUserPhone() == '00000000000'
+              ? '-'
+              : _formatPhone(_currentUserPhone()),
+          address: _addressController.text.trim().isEmpty
+              ? '-'
+              : _addressController.text.trim(),
           regions: preferredRegions,
           onEditProfile: () => setState(() => _view = UserView.editProfile),
         );
@@ -475,10 +1128,13 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     }
     if (preferredRegions.isEmpty) return sorted;
     if (!showAllRegions) {
-      return sorted.where((site) => preferredRegions.contains(site['region'])).toList();
+      return sorted
+          .where((site) => preferredRegions.contains(site['region']))
+          .toList();
     }
     final regionOrder = <String, int>{
-      for (var i = 0; i < preferredRegions.length; i += 1) preferredRegions[i]: i,
+      for (var i = 0; i < preferredRegions.length; i += 1)
+        preferredRegions[i]: i,
     };
     sorted.sort((a, b) {
       final aRegion = a['region']?.toString() ?? '';
@@ -499,18 +1155,29 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
         return _wrapAuthCard(
           Column(
             children: [
-              const Text('건설 인력 매칭', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+              const Text(
+                '건설 인력 매칭',
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 8),
-              const Text('근로자 전용 앱', style: TextStyle(color: Color(0xFF475569))),
+              const Text(
+                '근로자 전용 앱',
+                style: TextStyle(color: Color(0xFF475569)),
+              ),
               const SizedBox(height: 16),
               LoginFlutter(
                 phoneController: _phoneController,
                 rememberMe: _rememberMe,
-                onRememberChanged: (value) => setState(() => _rememberMe = value),
+                onRememberChanged: (value) =>
+                    setState(() => _rememberMe = value),
                 onContinue: () => _handleLogin(context),
+                isLoading: _isAuthLoading,
               ),
               const SizedBox(height: 8),
-              const Text('테스트 계정: 01011112222', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+              const Text(
+                '테스트 계정: 01011112222',
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+              ),
               const SizedBox(height: 8),
               const FooterFlutter(),
             ],
@@ -523,9 +1190,10 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
             onBack: () => setState(() => _view = UserView.login),
             codeController: _otpController,
             debugCode: _sentOtp,
+            isLoading: _isAuthLoading,
             onResend: () => _sendOtp(_normalizePhone(_phoneController.text)),
             onVerified: () => _handleAuthSuccess(context),
-            onRegister: () => setState(() => _view = UserView.register),
+            onRegister: () => _handleAuthSuccess(context),
           ),
         );
       case UserView.register:
@@ -546,8 +1214,9 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
             accountController: _accountController,
             ownerController: _ownerController,
             gender: _gender,
-            onGenderChanged: (value) => setState(() => _gender = value ?? 'male'),
-            onSubmit: _handleRegister,
+            onGenderChanged: (value) =>
+                setState(() => _gender = value ?? 'male'),
+            onSubmit: () => _handleRegister(context),
           ),
         );
       case UserView.sites:
@@ -557,27 +1226,55 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
         );
       case UserView.siteDetail:
         final sites = _sites;
-        final selected = _selectedSite ?? (sites.isNotEmpty ? sites.first : null);
+        final selected =
+            _selectedSite ?? (sites.isNotEmpty ? sites.first : null);
         if (selected == null) {
           return const Center(
-            child: Text('노출된 공고가 없습니다.', style: TextStyle(color: Color(0xFF64748B))),
+            child: Text(
+              '노출된 공고가 없습니다.',
+              style: TextStyle(color: Color(0xFF64748B)),
+            ),
           );
         }
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: SiteDetailFlutter(
-            site: selected,
-            application: _applicationForSite(selected),
-            onApply: () => _applyToSite(context, selected),
-            onCancel: () => _cancelApplication(context, selected),
-          ),
+        final canServerNavLinks =
+            _hasRemoteSession && selected['source']?.toString() == 'cwmp';
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: RemoteStatusBannerFlutter(
+                isLoading: _isSiteDetailLoading,
+                error: _siteDetailLoadError,
+                showLoadingBar: true,
+                margin: EdgeInsets.zero,
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: SiteDetailFlutter(
+                  site: selected,
+                  application: _applicationForSite(selected),
+                  onApply: () => _applyToSite(context, selected),
+                  onCancel: () => _cancelApplication(context, selected),
+                  canUseServerNavigationLinks: canServerNavLinks,
+                  serverNavigationLinks: _siteDetailNavLinks,
+                  isServerNavigationLinksLoading: _isSiteDetailNavLinksLoading,
+                  serverNavigationLinksError: _siteDetailNavLinksError,
+                  onReloadServerNavigationLinks: canServerNavLinks
+                      ? _refreshSelectedSiteNavigationLinks
+                      : null,
+                ),
+              ),
+            ),
+          ],
         );
       case UserView.editProfile:
         return Padding(
           padding: const EdgeInsets.all(16),
           child: EditProfileFormFlutter(
             onCancel: () => setState(() => _view = UserView.sites),
-            onSave: () => setState(() => _view = UserView.sites),
+            onSave: () => _saveProfileAndClose(context),
             addressController: _addressController,
             preferredRegions: _preferredRegions,
             regionInputController: _regionInputController,

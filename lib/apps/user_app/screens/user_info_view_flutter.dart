@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../data/region_code_catalog.dart';
+
 class UserInfoViewFlutter extends StatelessWidget {
   const UserInfoViewFlutter({
     super.key,
@@ -35,12 +37,20 @@ class UserInfoViewFlutter extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('내 정보', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Text(
+                      '내 정보',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Text('이름: $name'),
                     Text('휴대폰: $phone'),
                     Text('주소: $address'),
-                    Text('선호 지역: ${regions.isEmpty ? '-' : regions.join(', ')}'),
+                    Text(
+                      '선호 지역: ${regions.isEmpty ? '-' : regions.map(preferredRegionDisplayLabel).join(', ')}',
+                    ),
                   ],
                 ),
               ),

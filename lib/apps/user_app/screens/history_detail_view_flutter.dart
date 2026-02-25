@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../data/cwmp_api_models.dart';
+import '../../../data/cwmp_api_repository.dart';
 import '../widgets/attendance_scan_sheet_flutter.dart';
 import '../../../widgets/attendance_qr_helper.dart';
 import '../../../data/mock_backend.dart';
@@ -16,7 +18,8 @@ class HistoryDetailViewFlutter extends StatefulWidget {
   final String currentUserPhone;
 
   @override
-  State<HistoryDetailViewFlutter> createState() => _HistoryDetailViewFlutterState();
+  State<HistoryDetailViewFlutter> createState() =>
+      _HistoryDetailViewFlutterState();
 }
 
 class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
@@ -25,6 +28,9 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
   bool _confirmedThisSession = false;
   String? _attendanceErrorMessage;
   late final List<_HistoryItem> _items;
+  bool _isRemoteLoading = false;
+  String? _remoteError;
+  bool _hasRemoteRecords = false;
   _HistoryFilter _activeFilter = _HistoryFilter.thisMonth;
 
   @override
@@ -61,6 +67,37 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
         status: '정산 완료',
       ),
     ];
+    _loadRemoteWorkRecords();
+  }
+
+  Future<void> _loadRemoteWorkRecords() async {
+    setState(() {
+      _isRemoteLoading = true;
+      _remoteError = null;
+    });
+    try {
+      final summary = await CwmpApiRepository.instance.getMyWorkRecords();
+      final remoteItems = summary.records
+          .map(_HistoryItem.fromWorkRecord)
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _items
+          ..clear()
+          ..addAll(remoteItems);
+        _hasRemoteRecords = true;
+      });
+    } on CwmpApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _remoteError = e.message);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _remoteError = '근무 이력을 불러오지 못했습니다: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isRemoteLoading = false);
+      }
+    }
   }
 
   Widget _buildStatusLabel(String status, Color color) {
@@ -102,7 +139,9 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
   }
 
   Widget _buildHistoryCard(_HistoryItem item) {
-    final statusColor = item.status == '정산 완료' ? const Color(0xFF34D399) : const Color(0xFFF59E0B);
+    final statusColor = item.status == '정산 완료'
+        ? const Color(0xFF34D399)
+        : const Color(0xFFF59E0B);
     final borderColor = statusColor.withOpacity(0.35);
     return Container(
       padding: const EdgeInsets.all(16),
@@ -163,7 +202,10 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
                               color: Color(0xFF475569),
                             ),
                           ),
-                          const TextSpan(text: ' · ', style: TextStyle(color: Color(0xFF64748B))),
+                          const TextSpan(
+                            text: ' · ',
+                            style: TextStyle(color: Color(0xFF64748B)),
+                          ),
                           TextSpan(
                             text: '${_formatCurrency(item.pay)}원',
                             style: const TextStyle(
@@ -191,37 +233,52 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
   Widget build(BuildContext context) {
     final filteredItems = _filteredItems();
     final totalPay = filteredItems.fold<int>(0, (sum, item) => sum + item.pay);
-    final completedCount = filteredItems.where((item) => item.status == '정산 완료').length;
-    final pendingCount = filteredItems.where((item) => item.status != '정산 완료').length;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildAttendanceCard(context),
-        const SizedBox(height: 16),
-        _buildFilterBar(),
-        const SizedBox(height: 12),
-        _buildSummaryCard(
-          totalCount: filteredItems.length,
-          totalPay: totalPay,
-          completedCount: completedCount,
-          pendingCount: pendingCount,
-        ),
-        const SizedBox(height: 12),
-        if (filteredItems.isEmpty)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Text('선택한 기간에 정산 내역이 없습니다.', style: TextStyle(color: Color(0xFF94A3B8))),
-            ),
-          )
-        else
-          ...filteredItems.map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildHistoryCard(item),
-            ),
+    final completedCount = filteredItems
+        .where((item) => item.status == '정산 완료')
+        .length;
+    final pendingCount = filteredItems
+        .where((item) => item.status != '정산 완료')
+        .length;
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        padding: EdgeInsets.zero,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildAttendanceCard(context),
+              const SizedBox(height: 16),
+              _buildFilterBar(),
+              const SizedBox(height: 12),
+              _buildSummaryCard(
+                totalCount: filteredItems.length,
+                totalPay: totalPay,
+                completedCount: completedCount,
+                pendingCount: pendingCount,
+              ),
+              const SizedBox(height: 12),
+              if (filteredItems.isEmpty)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Text(
+                      '선택한 기간에 정산 내역이 없습니다.',
+                      style: TextStyle(color: Color(0xFF94A3B8)),
+                    ),
+                  ),
+                )
+              else
+                ...filteredItems.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildHistoryCard(item),
+                  ),
+                ),
+            ],
           ),
-      ],
+        ),
+      ),
     );
   }
 
@@ -266,8 +323,36 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('정산 요약', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '정산 요약',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+              if (_isRemoteLoading)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
           const SizedBox(height: 8),
+          if ((_remoteError ?? '').isNotEmpty) ...[
+            Text(
+              _remoteError!,
+              style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+          ] else if (_hasRemoteRecords) ...[
+            const Text(
+              '실서버 근무이력 기준',
+              style: TextStyle(color: Color(0xFF2563EB), fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+          ],
           _InfoRow(label: '총 근무일', value: '$totalCount일'),
           _InfoRow(label: '총 금액', value: '${_formatCurrency(totalPay)}원'),
           _InfoRow(label: '정산 완료', value: '$completedCount건'),
@@ -322,14 +407,20 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('출근 확인', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text(
+            '출근 확인',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 6),
           const Text(
             '현장 담당자가 제공한 QR을 스캔하면 출근 확인이 완료됩니다.',
             style: TextStyle(color: Color(0xFF64748B)),
           ),
           const SizedBox(height: 10),
-          Text(lastChecked, style: const TextStyle(color: Color(0xFF475569), fontSize: 12)),
+          Text(
+            lastChecked,
+            style: const TextStyle(color: Color(0xFF475569), fontSize: 12),
+          ),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -363,7 +454,8 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
             _confirmedThisSession = true;
             setState(() {
               _lastAttendanceAt = DateTime.now();
-              _lastAttendanceSite = saved['siteName']?.toString() ?? payload.siteName;
+              _lastAttendanceSite =
+                  saved['siteName']?.toString() ?? payload.siteName;
             });
           },
         ),
@@ -371,15 +463,15 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
     );
     if (!mounted) return;
     if (_attendanceErrorMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_attendanceErrorMessage!)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_attendanceErrorMessage!)));
       return;
     }
     if (!_confirmedThisSession) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('출근 확인이 완료되었습니다.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('출근 확인이 완료되었습니다.')));
   }
 }
 
@@ -397,9 +489,17 @@ class _InfoRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 90,
-            child: Text(label, style: const TextStyle(color: Color(0xFF64748B))),
+            child: Text(
+              label,
+              style: const TextStyle(color: Color(0xFF64748B)),
+            ),
           ),
-          Expanded(child: Text(value, style: const TextStyle(color: Color(0xFF0F172A)))),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(color: Color(0xFF0F172A)),
+            ),
+          ),
         ],
       ),
     );
@@ -420,4 +520,20 @@ class _HistoryItem {
   final String role;
   final int pay;
   final String status;
+
+  factory _HistoryItem.fromWorkRecord(CwmpWorkRecordResponse record) {
+    final date = DateTime.tryParse(record.workDate) ?? DateTime.now();
+    final totalPay = record.totalPay;
+    final status = record.status.toUpperCase() == 'SETTLED' ? '정산 완료' : '지급 대기';
+    final roleLabel = record.workUnits == 1
+        ? '근무 1공수'
+        : '근무 ${record.workUnits.toString()}공수';
+    return _HistoryItem(
+      date: date,
+      site: record.jobPostId > 0 ? '공고 #${record.jobPostId}' : '근무 기록',
+      role: roleLabel,
+      pay: totalPay.round(),
+      status: status,
+    );
+  }
 }

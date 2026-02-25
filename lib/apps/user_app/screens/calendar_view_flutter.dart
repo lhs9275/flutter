@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../data/cwmp_api_models.dart';
+import '../../../data/cwmp_api_repository.dart';
+
 class CalendarViewFlutter extends StatefulWidget {
   const CalendarViewFlutter({super.key});
 
@@ -10,20 +13,59 @@ class CalendarViewFlutter extends StatefulWidget {
 class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
   late final DateTime _today;
   late DateTime _activeMonth;
-  late final List<_CalendarEvent> _events;
+  late List<_CalendarEvent> _events;
+  bool _isRemoteLoading = false;
+  bool _hasRemoteEvents = false;
+  String? _remoteError;
 
   @override
   void initState() {
     super.initState();
     _today = DateTime.now();
     _activeMonth = DateTime(_today.year, _today.month, 1);
-    _events = [
+    _events = _fallbackEvents();
+    _loadRemoteEvents();
+  }
+
+  List<_CalendarEvent> _fallbackEvents() {
+    return [
       _CalendarEvent(DateTime(_today.year, _today.month, 2), '판교 IT센터'),
       _CalendarEvent(DateTime(_today.year, _today.month, 7), '서초 아파트 재건축'),
       _CalendarEvent(DateTime(_today.year, _today.month, 21), '성수동 리모델링'),
       _CalendarEvent(DateTime(_today.year, _today.month + 1, 5), '하남 신축 현장'),
       _CalendarEvent(DateTime(_today.year, _today.month - 1, 26), '송파 상가 공사'),
     ];
+  }
+
+  Future<void> _loadRemoteEvents() async {
+    setState(() {
+      _isRemoteLoading = true;
+      _remoteError = null;
+    });
+    try {
+      final summary = await CwmpApiRepository.instance.getMyWorkRecords();
+      final remoteEvents =
+          summary.records
+              .map(_CalendarEvent.fromWorkRecord)
+              .whereType<_CalendarEvent>()
+              .toList()
+            ..sort((a, b) => a.date.compareTo(b.date));
+      if (!mounted) return;
+      setState(() {
+        _events = remoteEvents;
+        _hasRemoteEvents = true;
+      });
+    } on CwmpApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _remoteError = e.message);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _remoteError = '일정을 불러오지 못했습니다: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isRemoteLoading = false);
+      }
+    }
   }
 
   bool _isSameDay(DateTime a, DateTime b) {
@@ -59,12 +101,18 @@ class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
   }
 
   List<_CalendarEvent> _eventsForMonth(DateTime month) {
-    final list = _events.where((event) => _isSameMonth(event.date, month)).toList();
+    final list = _events
+        .where((event) => _isSameMonth(event.date, month))
+        .toList();
     list.sort((a, b) => a.date.compareTo(b.date));
     return list;
   }
 
-  void _showEventSheet(BuildContext context, DateTime date, List<_CalendarEvent> events) {
+  void _showEventSheet(
+    BuildContext context,
+    DateTime date,
+    List<_CalendarEvent> events,
+  ) {
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFFF1F5F9),
@@ -83,12 +131,19 @@ class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
                   children: [
                     Text(
                       '${date.year}.${_twoDigit(date.month)}.${_twoDigit(date.day)}',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const Spacer(),
                     IconButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close, size: 20, color: Color(0xFF475569)),
+                      icon: const Icon(
+                        Icons.close,
+                        size: 20,
+                        color: Color(0xFF475569),
+                      ),
                     ),
                   ],
                 ),
@@ -115,7 +170,10 @@ class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
                         Expanded(
                           child: Text(
                             event.title,
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ],
@@ -145,160 +203,248 @@ class _CalendarViewFlutterState extends State<CalendarViewFlutter> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        return ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFFFFF),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: _goToPreviousMonth,
-                      icon: const Icon(Icons.chevron_left, color: Color(0xFF475569)),
-                      splashRadius: 20,
-                    ),
-                    Expanded(
-                      child: Text(
-                        '${_activeMonth.year}년 ${_activeMonth.month}월',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        return SingleChildScrollView(
+          padding: EdgeInsets.zero,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFFFF),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: _goToPreviousMonth,
+                        icon: const Icon(
+                          Icons.chevron_left,
+                          color: Color(0xFF475569),
+                        ),
+                        splashRadius: 20,
                       ),
-                    ),
-                    IconButton(
-                      onPressed: _goToNextMonth,
-                      icon: const Icon(Icons.chevron_right, color: Color(0xFF475569)),
-                      splashRadius: 20,
-                    ),
-                    const SizedBox(width: 6),
-                    TextButton(
-                      onPressed: _jumpToToday,
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF475569),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        backgroundColor: const Color(0xFFF1F5F9),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-                        side: const BorderSide(color: Color(0xFFE2E8F0)),
+                      Expanded(
+                        child: Text(
+                          '${_activeMonth.year}년 ${_activeMonth.month}월',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                      child: Text(isCurrentMonth ? '이번달' : '오늘', style: const TextStyle(fontSize: 12)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: const [
-                    _WeekdayLabel('일', color: Color(0xFFF87171)),
-                    _WeekdayLabel('월'),
-                    _WeekdayLabel('화'),
-                    _WeekdayLabel('수'),
-                    _WeekdayLabel('목'),
-                    _WeekdayLabel('금'),
-                    _WeekdayLabel('토', color: Color(0xFF60A5FA)),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                AspectRatio(
-                  aspectRatio: gridAspectRatio,
-                  child: GridView.builder(
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 7,
-                      childAspectRatio: gridChildAspectRatio,
-                    ),
-                    itemCount: cellCount,
-                    itemBuilder: (context, index) {
-                      if (index < leadingEmpty || index >= leadingEmpty + totalDays) {
-                        return const SizedBox.shrink();
-                      }
-
-                      final day = index - leadingEmpty + 1;
-                      final date = DateTime(_activeMonth.year, _activeMonth.month, day);
-                      final isToday = _isSameDay(date, _today);
-                      final dayEvents = _eventsForDay(date);
-                      final hasEvent = dayEvents.isNotEmpty;
-                      final weekdayIndex = index % 7;
-                      final textColor = weekdayIndex == 0
-                          ? const Color(0xFFF87171)
-                          : weekdayIndex == 6
-                              ? const Color(0xFF60A5FA)
-                              : const Color(0xFF0F172A);
-
-                      return Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(10),
-                          onTap: hasEvent ? () => _showEventSheet(context, date, dayEvents) : null,
-                          child: Container(
-                            margin: const EdgeInsets.all(2),
-                            decoration: BoxDecoration(
-                              color: isToday ? const Color(0xFFF1F5F9) : Colors.transparent,
-                              borderRadius: BorderRadius.circular(10),
-                              border: isToday ? Border.all(color: const Color(0xFF6366F1)) : null,
+                      IconButton(
+                        onPressed: _goToNextMonth,
+                        icon: const Icon(
+                          Icons.chevron_right,
+                          color: Color(0xFF475569),
+                        ),
+                        splashRadius: 20,
+                      ),
+                      const SizedBox(width: 6),
+                      TextButton(
+                        onPressed: _jumpToToday,
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF475569),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          backgroundColor: const Color(0xFFF1F5F9),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          side: const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                        child: Text(
+                          isCurrentMonth ? '이번달' : '오늘',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (_isRemoteLoading)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    )
+                  else if ((_remoteError ?? '').isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF2F2),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFFECACA)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              '일정 동기화 실패 (목업 일정 표시 중)',
+                              style: TextStyle(
+                                color: Color(0xFF991B1B),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                            child: Stack(
-                              children: [
-                                Align(
-                                  alignment: Alignment.topCenter,
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(top: 6),
-                                    child: Text(
-                                      '$day',
-                                      style: TextStyle(fontWeight: FontWeight.w600, color: textColor),
-                                    ),
-                                  ),
-                                ),
-                                if (hasEvent)
-                                  const Align(
-                                    alignment: Alignment.bottomCenter,
+                          ),
+                          TextButton(
+                            onPressed: _loadRemoteEvents,
+                            child: const Text('다시시도'),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (_hasRemoteEvents)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        '실서버 근무이력 기준',
+                        style: TextStyle(
+                          color: Color(0xFF2563EB),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  Row(
+                    children: const [
+                      _WeekdayLabel('일', color: Color(0xFFF87171)),
+                      _WeekdayLabel('월'),
+                      _WeekdayLabel('화'),
+                      _WeekdayLabel('수'),
+                      _WeekdayLabel('목'),
+                      _WeekdayLabel('금'),
+                      _WeekdayLabel('토', color: Color(0xFF60A5FA)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  AspectRatio(
+                    aspectRatio: gridAspectRatio,
+                    child: GridView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 7,
+                            childAspectRatio: gridChildAspectRatio,
+                          ),
+                      itemCount: cellCount,
+                      itemBuilder: (context, index) {
+                        if (index < leadingEmpty ||
+                            index >= leadingEmpty + totalDays) {
+                          return const SizedBox.shrink();
+                        }
+
+                        final day = index - leadingEmpty + 1;
+                        final date = DateTime(
+                          _activeMonth.year,
+                          _activeMonth.month,
+                          day,
+                        );
+                        final isToday = _isSameDay(date, _today);
+                        final dayEvents = _eventsForDay(date);
+                        final hasEvent = dayEvents.isNotEmpty;
+                        final weekdayIndex = index % 7;
+                        final textColor = weekdayIndex == 0
+                            ? const Color(0xFFF87171)
+                            : weekdayIndex == 6
+                            ? const Color(0xFF60A5FA)
+                            : const Color(0xFF0F172A);
+
+                        return Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: hasEvent
+                                ? () =>
+                                      _showEventSheet(context, date, dayEvents)
+                                : null,
+                            child: Container(
+                              margin: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                color: isToday
+                                    ? const Color(0xFFF1F5F9)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(10),
+                                border: isToday
+                                    ? Border.all(color: const Color(0xFF6366F1))
+                                    : null,
+                              ),
+                              child: Stack(
+                                children: [
+                                  Align(
+                                    alignment: Alignment.topCenter,
                                     child: Padding(
-                                      padding: EdgeInsets.only(bottom: 6),
-                                      child: DecoratedBox(
-                                        decoration: BoxDecoration(
-                                          color: Color(0xFF6366F1),
-                                          shape: BoxShape.circle,
+                                      padding: const EdgeInsets.only(top: 6),
+                                      child: Text(
+                                        '$day',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: textColor,
                                         ),
-                                        child: SizedBox(width: 6, height: 6),
                                       ),
                                     ),
                                   ),
-                              ],
+                                  if (hasEvent)
+                                    const Align(
+                                      alignment: Alignment.bottomCenter,
+                                      child: Padding(
+                                        padding: EdgeInsets.only(bottom: 6),
+                                        child: DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            color: Color(0xFF6366F1),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: SizedBox(width: 6, height: 6),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  isCurrentMonth ? '이번 달 일정' : '${_activeMonth.month}월 일정',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                if (monthlyEvents.isEmpty)
-                  const Text('등록된 일정이 없습니다.', style: TextStyle(color: Color(0xFF64748B))),
-                if (monthlyEvents.isNotEmpty)
-                  Column(
-                    children: monthlyEvents
-                        .map(
-                          (event) => Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _EventRow(
-                              date: '${_twoDigit(event.date.month)}/${_twoDigit(event.date.day)}',
-                              title: event.title,
+                  const SizedBox(height: 6),
+                  Text(
+                    isCurrentMonth ? '이번 달 일정' : '${_activeMonth.month}월 일정',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  if (monthlyEvents.isEmpty)
+                    const Text(
+                      '등록된 일정이 없습니다.',
+                      style: TextStyle(color: Color(0xFF64748B)),
+                    ),
+                  if (monthlyEvents.isNotEmpty)
+                    Column(
+                      children: monthlyEvents
+                          .map(
+                            (event) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _EventRow(
+                                date:
+                                    '${_twoDigit(event.date.month)}/${_twoDigit(event.date.day)}',
+                                title: event.title,
+                              ),
                             ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                const SizedBox(height: 8),
-              ],
+                          )
+                          .toList(),
+                    ),
+                  const SizedBox(height: 8),
+                ],
+              ),
             ),
           ),
         );
@@ -335,6 +481,13 @@ class _CalendarEvent {
 
   final DateTime date;
   final String title;
+
+  static _CalendarEvent? fromWorkRecord(CwmpWorkRecordResponse record) {
+    final date = DateTime.tryParse(record.workDate);
+    if (date == null) return null;
+    final title = record.jobPostId > 0 ? '공고 #${record.jobPostId}' : '근무 기록';
+    return _CalendarEvent(date, title);
+  }
 }
 
 class _EventRow extends StatelessWidget {
@@ -361,7 +514,10 @@ class _EventRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(999),
               border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
-            child: Text(date, style: const TextStyle(fontSize: 12, color: Color(0xFF475569))),
+            child: Text(
+              date,
+              style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(

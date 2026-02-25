@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../data/region_code_catalog.dart';
+import 'preferred_region_picker_dialog_flutter.dart';
+
 class EditProfileFormFlutter extends StatelessWidget {
   const EditProfileFormFlutter({
     super.key,
@@ -27,16 +30,31 @@ class EditProfileFormFlutter extends StatelessWidget {
   void _tryAddRegion(BuildContext context) {
     final value = regionInputController.text.trim();
     if (value.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('추가할 지역을 입력해주세요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('추가할 지역코드를 입력해주세요.')));
       return;
     }
     final added = onAddRegion(value);
     if (!added) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이미 등록된 지역입니다.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('이미 등록된 지역입니다.')));
+    }
+  }
+
+  Future<void> _pickRegion(BuildContext context) async {
+    final selectedCode = await showPreferredRegionPickerDialog(
+      context,
+      excludedCodes: preferredRegions,
+    );
+    if (selectedCode == null || selectedCode.trim().isEmpty) return;
+    final added = onAddRegion(selectedCode);
+    if (!context.mounted) return;
+    if (!added) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('이미 등록된 지역입니다.')));
     }
   }
 
@@ -44,9 +62,14 @@ class EditProfileFormFlutter extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const Text('프로필 수정', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        const Text(
+          '프로필 수정',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 12),
-        TextField(decoration: const InputDecoration(labelText: '이름', filled: true)),
+        TextField(
+          decoration: const InputDecoration(labelText: '이름', filled: true),
+        ),
         const SizedBox(height: 12),
         TextField(
           controller: addressController,
@@ -63,21 +86,40 @@ class EditProfileFormFlutter extends StatelessWidget {
             Expanded(
               child: TextField(
                 controller: regionInputController,
-                decoration: const InputDecoration(labelText: '지역 추가', filled: true),
+                decoration: const InputDecoration(
+                  labelText: '지역코드 직접 입력 (5자리)',
+                  hintText: '예: 11680',
+                  filled: true,
+                ),
               ),
             ),
             const SizedBox(width: 8),
-            ElevatedButton(onPressed: () => _tryAddRegion(context), child: const Text('추가')),
+            ElevatedButton(
+              onPressed: () => _tryAddRegion(context),
+              child: const Text('추가'),
+            ),
           ],
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: () => _pickRegion(context),
+            icon: const Icon(Icons.map_outlined),
+            label: const Text('지역 선택'),
+          ),
         ),
         const SizedBox(height: 6),
         const Text(
-          '우선순위는 위에서 아래 순서입니다.',
+          '지역코드 기준으로 저장되며, 우선순위는 위에서 아래 순서입니다.',
           style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
         ),
         const SizedBox(height: 10),
         if (preferredRegions.isEmpty)
-          const Text('등록된 선호 지역이 없습니다.', style: TextStyle(color: Color(0xFF94A3B8)))
+          const Text(
+            '등록된 선호 지역이 없습니다.',
+            style: TextStyle(color: Color(0xFF94A3B8)),
+          )
         else
           Column(
             children: List.generate(preferredRegions.length, (index) {
@@ -86,7 +128,10 @@ class EditProfileFormFlutter extends StatelessWidget {
               final isLast = index == preferredRegions.length - 1;
               return Container(
                 margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(12),
@@ -94,7 +139,11 @@ class EditProfileFormFlutter extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    Expanded(child: Text('${index + 1}. $region')),
+                    Expanded(
+                      child: Text(
+                        '${index + 1}. ${preferredRegionDisplayLabel(region)}',
+                      ),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.arrow_upward, size: 18),
                       onPressed: isFirst ? null : () => onMoveRegionUp(index),
@@ -116,7 +165,9 @@ class EditProfileFormFlutter extends StatelessWidget {
             }),
           ),
         const SizedBox(height: 12),
-        TextField(decoration: const InputDecoration(labelText: '은행', filled: true)),
+        TextField(
+          decoration: const InputDecoration(labelText: '은행', filled: true),
+        ),
         const SizedBox(height: 24),
         Row(
           children: [
@@ -128,10 +179,7 @@ class EditProfileFormFlutter extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: ElevatedButton(
-                onPressed: onSave,
-                child: const Text('저장'),
-              ),
+              child: ElevatedButton(onPressed: onSave, child: const Text('저장')),
             ),
           ],
         ),

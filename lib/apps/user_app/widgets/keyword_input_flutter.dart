@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../data/region_code_catalog.dart';
+import 'preferred_region_picker_dialog_flutter.dart';
+
 class RegistrationFormFlutter extends StatefulWidget {
   const RegistrationFormFlutter({
     super.key,
@@ -42,7 +45,8 @@ class RegistrationFormFlutter extends StatefulWidget {
   final VoidCallback onSubmit;
 
   @override
-  State<RegistrationFormFlutter> createState() => _RegistrationFormFlutterState();
+  State<RegistrationFormFlutter> createState() =>
+      _RegistrationFormFlutterState();
 }
 
 class _RegistrationFormFlutterState extends State<RegistrationFormFlutter> {
@@ -125,9 +129,9 @@ class _RegistrationFormFlutterState extends State<RegistrationFormFlutter> {
   void _addExtraDoc() {
     final label = _extraDocController.text.trim();
     if (label.isEmpty || _extraPendingFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('서류 설명과 사진을 모두 선택해주세요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('서류 설명과 사진을 모두 선택해주세요.')));
       return;
     }
     setState(() {
@@ -145,15 +149,15 @@ class _RegistrationFormFlutterState extends State<RegistrationFormFlutter> {
 
   void _submit() {
     if (!(_idFile != null && _safetyFile != null && _bankFile != null)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('필수 서류 3종을 모두 첨부해주세요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('필수 서류 3종을 모두 첨부해주세요.')));
       return;
     }
     if (widget.preferredRegions.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('선호 지역을 최소 1개 이상 등록해주세요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('선호 지역을 최소 1개 이상 등록해주세요.')));
       return;
     }
     widget.onSubmit();
@@ -162,16 +166,31 @@ class _RegistrationFormFlutterState extends State<RegistrationFormFlutter> {
   void _tryAddRegion() {
     final value = widget.regionInputController.text.trim();
     if (value.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('추가할 지역을 입력해주세요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('추가할 지역코드를 입력해주세요.')));
       return;
     }
     final added = widget.onAddRegion(value);
     if (!added) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이미 등록된 지역입니다.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('이미 등록된 지역입니다.')));
+    }
+  }
+
+  Future<void> _pickRegion() async {
+    final selectedCode = await showPreferredRegionPickerDialog(
+      context,
+      excludedCodes: widget.preferredRegions,
+    );
+    if (selectedCode == null || selectedCode.trim().isEmpty) return;
+    final added = widget.onAddRegion(selectedCode);
+    if (!mounted) return;
+    if (!added) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('이미 등록된 지역입니다.')));
     }
   }
 
@@ -179,7 +198,10 @@ class _RegistrationFormFlutterState extends State<RegistrationFormFlutter> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const Text('회원가입', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        const Text(
+          '회원가입',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 12),
         TextField(
           controller: widget.phoneController,
@@ -227,21 +249,37 @@ class _RegistrationFormFlutterState extends State<RegistrationFormFlutter> {
             Expanded(
               child: TextField(
                 controller: widget.regionInputController,
-                decoration: const InputDecoration(labelText: '지역 추가', filled: true),
+                decoration: const InputDecoration(
+                  labelText: '지역코드 직접 입력 (5자리)',
+                  hintText: '예: 11680',
+                  filled: true,
+                ),
               ),
             ),
             const SizedBox(width: 8),
             ElevatedButton(onPressed: _tryAddRegion, child: const Text('추가')),
           ],
         ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: _pickRegion,
+            icon: const Icon(Icons.map_outlined),
+            label: const Text('지역 선택'),
+          ),
+        ),
         const SizedBox(height: 6),
         const Text(
-          '우선순위는 위에서 아래 순서입니다.',
+          '지역코드 기준으로 저장되며, 우선순위는 위에서 아래 순서입니다.',
           style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
         ),
         const SizedBox(height: 10),
         if (widget.preferredRegions.isEmpty)
-          const Text('등록된 선호 지역이 없습니다.', style: TextStyle(color: Color(0xFF94A3B8)))
+          const Text(
+            '등록된 선호 지역이 없습니다.',
+            style: TextStyle(color: Color(0xFF94A3B8)),
+          )
         else
           Column(
             children: List.generate(widget.preferredRegions.length, (index) {
@@ -250,7 +288,10 @@ class _RegistrationFormFlutterState extends State<RegistrationFormFlutter> {
               final isLast = index == widget.preferredRegions.length - 1;
               return Container(
                 margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(12),
@@ -259,16 +300,22 @@ class _RegistrationFormFlutterState extends State<RegistrationFormFlutter> {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text('${index + 1}. $region'),
+                      child: Text(
+                        '${index + 1}. ${preferredRegionDisplayLabel(region)}',
+                      ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.arrow_upward, size: 18),
-                      onPressed: isFirst ? null : () => widget.onMoveRegionUp(index),
+                      onPressed: isFirst
+                          ? null
+                          : () => widget.onMoveRegionUp(index),
                       tooltip: '위로',
                     ),
                     IconButton(
                       icon: const Icon(Icons.arrow_downward, size: 18),
-                      onPressed: isLast ? null : () => widget.onMoveRegionDown(index),
+                      onPressed: isLast
+                          ? null
+                          : () => widget.onMoveRegionDown(index),
                       tooltip: '아래로',
                     ),
                     IconButton(
@@ -297,17 +344,16 @@ class _RegistrationFormFlutterState extends State<RegistrationFormFlutter> {
           decoration: const InputDecoration(labelText: '예금주', filled: true),
         ),
         const SizedBox(height: 20),
-        _SectionHeader(
-          title: '필수 서류',
-          subtitle: '근로자 등록을 위해 아래 3종 첨부가 필요합니다.',
-        ),
+        _SectionHeader(title: '필수 서류', subtitle: '근로자 등록을 위해 아래 3종 첨부가 필요합니다.'),
         const SizedBox(height: 10),
         _AttachmentTile(
           title: '신분증',
           description: '주민등록증/운전면허증 사진',
           fileName: _idFile?.name,
           onSelect: () => _pickRequiredDoc(_RequiredDocType.id),
-          onRemove: _idFile == null ? null : () => _removeRequiredDoc(_RequiredDocType.id),
+          onRemove: _idFile == null
+              ? null
+              : () => _removeRequiredDoc(_RequiredDocType.id),
         ),
         const SizedBox(height: 8),
         _AttachmentTile(
@@ -315,7 +361,9 @@ class _RegistrationFormFlutterState extends State<RegistrationFormFlutter> {
           description: '이수증 사진',
           fileName: _safetyFile?.name,
           onSelect: () => _pickRequiredDoc(_RequiredDocType.safety),
-          onRemove: _safetyFile == null ? null : () => _removeRequiredDoc(_RequiredDocType.safety),
+          onRemove: _safetyFile == null
+              ? null
+              : () => _removeRequiredDoc(_RequiredDocType.safety),
         ),
         const SizedBox(height: 8),
         _AttachmentTile(
@@ -323,7 +371,9 @@ class _RegistrationFormFlutterState extends State<RegistrationFormFlutter> {
           description: '통장 사본 사진',
           fileName: _bankFile?.name,
           onSelect: () => _pickRequiredDoc(_RequiredDocType.bank),
-          onRemove: _bankFile == null ? null : () => _removeRequiredDoc(_RequiredDocType.bank),
+          onRemove: _bankFile == null
+              ? null
+              : () => _removeRequiredDoc(_RequiredDocType.bank),
         ),
         const SizedBox(height: 16),
         _SectionHeader(
@@ -348,10 +398,7 @@ class _RegistrationFormFlutterState extends State<RegistrationFormFlutter> {
               child: Text(_extraPendingFile == null ? '사진 선택' : '사진 변경'),
             ),
             const SizedBox(width: 8),
-            ElevatedButton(
-              onPressed: _addExtraDoc,
-              child: const Text('추가'),
-            ),
+            ElevatedButton(onPressed: _addExtraDoc, child: const Text('추가')),
           ],
         ),
         if (_extraPendingFile != null) ...[
@@ -390,10 +437,7 @@ class _RegistrationFormFlutterState extends State<RegistrationFormFlutter> {
         const SizedBox(height: 20),
         SizedBox(
           width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _submit,
-            child: const Text('가입 완료'),
-          ),
+          child: ElevatedButton(onPressed: _submit, child: const Text('가입 완료')),
         ),
       ],
     );
@@ -411,7 +455,10 @@ class _SectionHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 4),
         Text(subtitle, style: const TextStyle(color: Color(0xFF64748B))),
       ],
@@ -452,9 +499,18 @@ class _AttachmentTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
                     const SizedBox(height: 4),
-                    Text(description, style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+                    Text(
+                      description,
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -465,16 +521,16 @@ class _AttachmentTile extends StatelessWidget {
               ),
               if (fileName != null && onRemove != null) ...[
                 const SizedBox(width: 8),
-                TextButton(
-                  onPressed: onRemove,
-                  child: const Text('삭제'),
-                ),
+                TextButton(onPressed: onRemove, child: const Text('삭제')),
               ],
             ],
           ),
           if (fileName != null) ...[
             const SizedBox(height: 6),
-            Text('사진: $fileName', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+            Text(
+              '사진: $fileName',
+              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+            ),
           ],
         ],
       ),
@@ -483,7 +539,11 @@ class _AttachmentTile extends StatelessWidget {
 }
 
 class _ExtraDocItem extends StatelessWidget {
-  const _ExtraDocItem({required this.label, required this.fileName, required this.onRemove});
+  const _ExtraDocItem({
+    required this.label,
+    required this.fileName,
+    required this.onRemove,
+  });
 
   final String label;
   final String fileName;

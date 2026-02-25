@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../data/region_code_catalog.dart';
 import '../models/application_record.dart';
 
 class SiteListFlutter extends StatelessWidget {
@@ -15,6 +16,7 @@ class SiteListFlutter extends StatelessWidget {
     required this.onApply,
     required this.onCancel,
     required this.applications,
+    this.onRefresh,
   });
 
   final List<Map<String, dynamic>> sites;
@@ -28,9 +30,184 @@ class SiteListFlutter extends StatelessWidget {
   final ValueChanged<Map<String, dynamic>> onApply;
   final ValueChanged<Map<String, dynamic>> onCancel;
   final Map<String, ApplicationRecord> applications;
+  final Future<void> Function()? onRefresh;
 
   @override
   Widget build(BuildContext context) {
+    Widget buildScrollableList() {
+      final physics = const AlwaysScrollableScrollPhysics();
+      if (sites.isEmpty) {
+        return ListView(
+          physics: physics,
+          children: [
+            _EmptyState(
+              preferredRegions: preferredRegions,
+              selectedRegion: selectedRegion,
+              showAllRegions: showAllRegions,
+            ),
+          ],
+        );
+      }
+      return ListView.separated(
+        physics: physics,
+        itemCount: sites.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (context, index) {
+          final site = sites[index];
+          final name = site['name'] ?? '';
+          final address = site['address'] ?? '';
+          final type = site['type'] ?? '';
+          final pay = site['pay'] ?? '-';
+          final date = site['date'] ?? '-';
+          final region = site['region'] ?? '';
+          final regionLabel = preferredRegionDisplayLabel(region.toString());
+          final id = site['id']?.toString();
+          final application = id == null ? null : applications[id];
+          final status = application?.status;
+          final statusLabel = status == ApplicationStatus.confirmed
+              ? '확정'
+              : status == ApplicationStatus.applied
+              ? '지원 완료'
+              : '모집중';
+          final statusColor = status == ApplicationStatus.confirmed
+              ? const Color(0xFF16A34A)
+              : status == ApplicationStatus.applied
+              ? const Color(0xFF2563EB)
+              : const Color(0xFF64748B);
+          final statusBg = status == ApplicationStatus.confirmed
+              ? const Color(0xFFDCFCE7)
+              : status == ApplicationStatus.applied
+              ? const Color(0xFFEFF6FF)
+              : const Color(0xFFF1F5F9);
+          return Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFFFF),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusBg,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: statusBg),
+                      ),
+                      child: Text(
+                        statusLabel,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: statusColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '일급 $pay원',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(Icons.place, size: 14, color: Color(0xFF64748B)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        address,
+                        style: const TextStyle(color: Color(0xFF475569)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (region.toString().isNotEmpty)
+                      _InfoChip(label: '지역', value: regionLabel),
+                    _InfoChip(label: '직종', value: type),
+                    _InfoChip(label: '근무일', value: date),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 96,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                        onPressed: () => onViewDetail(site),
+                        child: const Text('상세보기'),
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    SizedBox(
+                      width: 96,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                        onPressed: status == ApplicationStatus.confirmed
+                            ? null
+                            : status == ApplicationStatus.applied
+                            ? () => onCancel(site)
+                            : () => onApply(site),
+                        child: Text(
+                          status == ApplicationStatus.confirmed
+                              ? '확정됨'
+                              : status == ApplicationStatus.applied
+                              ? '지원취소'
+                              : '지원하기',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    }
+
+    Widget listView = buildScrollableList();
+    if (onRefresh != null) {
+      listView = RefreshIndicator(onRefresh: onRefresh!, child: listView);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -43,141 +220,7 @@ class SiteListFlutter extends StatelessWidget {
           onSelected: onRegionSelected,
         ),
         const SizedBox(height: 12),
-        Expanded(
-          child: sites.isEmpty
-              ? _EmptyState(
-                  preferredRegions: preferredRegions,
-                  selectedRegion: selectedRegion,
-                  showAllRegions: showAllRegions,
-                )
-              : ListView.separated(
-                  itemCount: sites.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final site = sites[index];
-                    final name = site['name'] ?? '';
-                    final address = site['address'] ?? '';
-                    final type = site['type'] ?? '';
-                    final pay = site['pay'] ?? '-';
-                    final date = site['date'] ?? '-';
-                    final region = site['region'] ?? '';
-                    final id = site['id']?.toString();
-                    final application = id == null ? null : applications[id];
-                    final status = application?.status;
-                    final statusLabel = status == ApplicationStatus.confirmed
-                        ? '확정'
-                        : status == ApplicationStatus.applied
-                            ? '지원 완료'
-                            : '모집중';
-                    final statusColor = status == ApplicationStatus.confirmed
-                        ? const Color(0xFF16A34A)
-                        : status == ApplicationStatus.applied
-                            ? const Color(0xFF2563EB)
-                            : const Color(0xFF64748B);
-                    final statusBg = status == ApplicationStatus.confirmed
-                        ? const Color(0xFFDCFCE7)
-                        : status == ApplicationStatus.applied
-                            ? const Color(0xFFEFF6FF)
-                            : const Color(0xFFF1F5F9);
-                    return Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFFFFF),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  name,
-                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: statusBg,
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(color: statusBg),
-                                ),
-                                child: Text(
-                                  statusLabel,
-                                  style: TextStyle(fontSize: 12, color: statusColor, fontWeight: FontWeight.w600),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Text('일급 $pay원', style: const TextStyle(fontSize: 12, color: Color(0xFF475569))),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              const Icon(Icons.place, size: 14, color: Color(0xFF64748B)),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(address, style: const TextStyle(color: Color(0xFF475569))),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              if (region.toString().isNotEmpty) _InfoChip(label: '지역', value: region.toString()),
-                              _InfoChip(label: '직종', value: type),
-                              _InfoChip(label: '근무일', value: date),
-                            ],
-                          ),
-                          const SizedBox(height: 14),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 96,
-                                child: OutlinedButton(
-                                  style: OutlinedButton.styleFrom(
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
-                                  ),
-                                  onPressed: () => onViewDetail(site),
-                                  child: const Text('상세보기'),
-                                ),
-                              ),
-                              const SizedBox(width: 20),
-                              SizedBox(
-                                width: 96,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
-                                  ),
-                                  onPressed: status == ApplicationStatus.confirmed
-                                      ? null
-                                      : status == ApplicationStatus.applied
-                                          ? () => onCancel(site)
-                                          : () => onApply(site),
-                                  child: Text(
-                                    status == ApplicationStatus.confirmed
-                                        ? '확정됨'
-                                        : status == ApplicationStatus.applied
-                                            ? '지원취소'
-                                            : '지원하기',
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
+        Expanded(child: listView),
       ],
     );
   }
@@ -212,7 +255,7 @@ class _RegionFilterBar extends StatelessWidget {
             const SizedBox(width: 8),
             if (hasPreferred)
               Text(
-                '선호 지역: ${preferredRegions.join(', ')}',
+                '선호 지역: ${preferredRegions.map(preferredRegionDisplayLabel).join(', ')}',
                 style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
               )
             else
@@ -242,19 +285,25 @@ class _RegionFilterBar extends StatelessWidget {
               onSelected: (_) => onSelected(null),
               selectedColor: const Color(0xFFDBEAFE),
               labelStyle: TextStyle(
-                color: selectedRegion == null ? const Color(0xFF1D4ED8) : const Color(0xFF475569),
+                color: selectedRegion == null
+                    ? const Color(0xFF1D4ED8)
+                    : const Color(0xFF475569),
               ),
             ),
             ...regions.map((region) {
               final isSelected = selectedRegion == region;
-              final isPreferred = hasPreferred && preferredRegions.contains(region);
+              final isPreferred =
+                  hasPreferred && preferredRegions.contains(region);
+              final regionLabel = preferredRegionDisplayLabel(region);
               return ChoiceChip(
-                label: Text(isPreferred ? '$region · 선호' : region),
+                label: Text(isPreferred ? '$regionLabel · 선호' : regionLabel),
                 selected: isSelected,
                 onSelected: (_) => onSelected(region),
                 selectedColor: const Color(0xFFDBEAFE),
                 labelStyle: TextStyle(
-                  color: isSelected ? const Color(0xFF1D4ED8) : const Color(0xFF475569),
+                  color: isSelected
+                      ? const Color(0xFF1D4ED8)
+                      : const Color(0xFF475569),
                 ),
               );
             }),
@@ -278,8 +327,11 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final regionLabel =
-        selectedRegion ?? (preferredRegions.isNotEmpty ? preferredRegions.join(', ') : '선택된 지역');
+    final regionLabel = selectedRegion != null
+        ? preferredRegionDisplayLabel(selectedRegion!)
+        : (preferredRegions.isNotEmpty
+              ? preferredRegions.map(preferredRegionDisplayLabel).join(', ')
+              : '선택된 지역');
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -291,7 +343,10 @@ class _EmptyState extends StatelessWidget {
             style: const TextStyle(color: Color(0xFF64748B)),
           ),
           const SizedBox(height: 6),
-          const Text('다른 지역을 선택해보세요.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+          const Text(
+            '다른 지역을 선택해보세요.',
+            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+          ),
         ],
       ),
     );

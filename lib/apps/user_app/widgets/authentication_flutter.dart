@@ -12,6 +12,7 @@ class AuthenticationFlutter extends StatelessWidget {
     required this.onResend,
     this.debugCode,
     this.isLoading = false,
+    this.showRegisterButton = true,
   });
 
   final String phone;
@@ -22,6 +23,7 @@ class AuthenticationFlutter extends StatelessWidget {
   final VoidCallback onResend;
   final String? debugCode;
   final bool isLoading;
+  final bool showRegisterButton;
 
   String _maskPhone(String phone) {
     final cleaned = phone.replaceAll(RegExp(r'\D'), '');
@@ -40,9 +42,15 @@ class AuthenticationFlutter extends StatelessWidget {
           label: const Text('번호 다시 입력'),
         ),
         const SizedBox(height: 8),
-        const Text('인증번호 입력', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        const Text(
+          '인증번호 입력',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 4),
-        Text('${_maskPhone(phone)}(으)로 전송된 6자리 인증번호를 입력해주세요.', style: const TextStyle(color: Color(0xFF475569))),
+        Text(
+          '${_maskPhone(phone)}(으)로 전송된 6자리 인증번호를 입력해주세요.',
+          style: const TextStyle(color: Color(0xFF475569)),
+        ),
         const SizedBox(height: 16),
         TextField(
           controller: codeController,
@@ -86,13 +94,14 @@ class AuthenticationFlutter extends StatelessWidget {
                 child: const Text('인증번호 재전송'),
               ),
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton(
-                onPressed: onRegister,
-                child: const Text('신규 가입하기'),
+            if (showRegisterButton) const SizedBox(width: 8),
+            if (showRegisterButton)
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: onRegister,
+                  child: const Text('신규 가입하기'),
+                ),
               ),
-            ),
           ],
         ),
       ],
