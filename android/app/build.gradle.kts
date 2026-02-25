@@ -55,8 +55,9 @@ android {
     buildTypes {
         debug { }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works₩.
+            // Local/dev release builds are signed with the debug keystore so they can be installed.
+            // Replace with a real release keystore for production distribution.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 }

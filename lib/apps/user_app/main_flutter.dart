@@ -56,6 +56,8 @@ class UserAppFlutter extends StatefulWidget {
 
 class _UserAppFlutterState extends State<UserAppFlutter> {
   static const String _kPrefShowAllRegions = 'cwmp_user_show_all_regions';
+  static const String _kPrefSiteTab = 'cwmp_user_site_tab';
+  static const String _kPrefSelectedRegionFilter = 'cwmp_user_region_filter';
 
   late UserView _view;
   SiteTab _tab = SiteTab.list;
@@ -236,17 +238,58 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     }
   }
 
+  void _handleSiteTabSelected(SiteTab tab) {
+    if (_tab == tab) return;
+    setState(() => _tab = tab);
+    _persistSiteTabPreference(tab);
+  }
+
+  void _handleRegionFilterSelected(String? region) {
+    if (_selectedRegionFilter == region) return;
+    setState(() => _selectedRegionFilter = region);
+    _persistSelectedRegionFilterPreference(region);
+  }
+
   Future<void> _restoreUiPreferences() async {
     final prefs = await SharedPreferences.getInstance();
-    final value = prefs.getBool(_kPrefShowAllRegions) ?? false;
+    final showAll = prefs.getBool(_kPrefShowAllRegions) ?? false;
+    final tabName = (prefs.getString(_kPrefSiteTab) ?? '').trim();
+    final regionFilter = (prefs.getString(_kPrefSelectedRegionFilter) ?? '')
+        .trim();
+    SiteTab? restoredTab;
+    for (final tab in SiteTab.values) {
+      if (tab.name == tabName) {
+        restoredTab = tab;
+        break;
+      }
+    }
     if (!mounted) return;
-    if (_showAllRegions == value) return;
-    setState(() => _showAllRegions = value);
+    setState(() {
+      _showAllRegions = showAll;
+      if (restoredTab != null) {
+        _tab = restoredTab;
+      }
+      _selectedRegionFilter = regionFilter.isEmpty ? null : regionFilter;
+    });
   }
 
   Future<void> _persistShowAllRegionsPreference(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kPrefShowAllRegions, value);
+  }
+
+  Future<void> _persistSiteTabPreference(SiteTab tab) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPrefSiteTab, tab.name);
+  }
+
+  Future<void> _persistSelectedRegionFilterPreference(String? region) async {
+    final prefs = await SharedPreferences.getInstance();
+    if ((region ?? '').trim().isEmpty) {
+      await prefs.remove(_kPrefSelectedRegionFilter);
+      return;
+    }
+    await prefs.setString(_kPrefSelectedRegionFilter, region!.trim());
   }
 
   Future<void> _refreshSelectedSiteDetail() async {
@@ -715,6 +758,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
       _isSiteDetailNavLinksLoading = false;
       _view = UserView.login;
     });
+    _persistSelectedRegionFilterPreference(null);
   }
 
   ApplicantStatus? _mockBackendApplicantStatusForSite(
@@ -1066,8 +1110,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
           availableRegions: availableRegions,
           showAllRegions: _showAllRegions,
           onToggleShowAll: _handleToggleShowAllRegions,
-          onRegionSelected: (region) =>
-              setState(() => _selectedRegionFilter = region),
+          onRegionSelected: _handleRegionFilterSelected,
           onViewDetail: _openSiteDetail,
           onApply: (site) => _applyToSite(context, site),
           onCancel: (site) => _cancelApplication(context, site),
@@ -1292,7 +1335,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     return BottomNavigationBar(
       type: BottomNavigationBarType.fixed,
       currentIndex: SiteTab.values.indexOf(_tab),
-      onTap: (index) => setState(() => _tab = SiteTab.values[index]),
+      onTap: (index) => _handleSiteTabSelected(SiteTab.values[index]),
       items: const [
         BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: '리스트'),
         BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: '캘린더'),

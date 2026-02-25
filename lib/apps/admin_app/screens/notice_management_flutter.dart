@@ -257,6 +257,111 @@ class _NoticeManagementFlutterState extends State<NoticeManagementFlutter> {
     }
   }
 
+  Future<void> _viewNoticeDetail(
+    BuildContext context,
+    Map<String, dynamic> notice,
+  ) async {
+    final id = (notice['id']?.toString() ?? '').trim();
+    Map<String, dynamic> detail = Map<String, dynamic>.from(notice);
+    final onLoadDetail = widget.onLoadDetail;
+
+    if (id.isNotEmpty && onLoadDetail != null) {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: SizedBox(
+            height: 72,
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ),
+      );
+      try {
+        detail = await onLoadDetail(id);
+      } catch (e) {
+        if (!mounted) return;
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('공지 상세 조회 실패: $e')));
+        return;
+      }
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+
+    final title = (detail['title']?.toString() ?? '').trim();
+    final content = (detail['content']?.toString() ?? '').trim();
+    final emergency = detail['emergency'] == true;
+    final createdAt = (detail['createdAt']?.toString() ?? '').trim();
+    final updatedAt = (detail['updatedAt']?.toString() ?? '').trim();
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title.isEmpty ? '공지 상세' : title),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (emergency)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEE2E2),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0xFFFECACA)),
+                  ),
+                  child: const Text(
+                    '긴급 공지',
+                    style: TextStyle(
+                      color: Color(0xFFB91C1C),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              Text(
+                content.isEmpty ? '-' : content,
+                style: const TextStyle(color: Color(0xFF334155)),
+              ),
+              if (createdAt.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  '작성: $createdAt',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+              ],
+              if (updatedAt.isNotEmpty && updatedAt != createdAt) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '수정: $updatedAt',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final notices = _visibleNotices;
@@ -438,13 +543,18 @@ class _NoticeManagementFlutterState extends State<NoticeManagementFlutter> {
                 subtitle: subtitleParts.isEmpty
                     ? null
                     : Text(subtitleParts.join(' · ')),
-                trailing:
-                    ((widget.onDelete == null && widget.onUpdate == null) ||
-                        idText.isEmpty)
+                trailing: idText.isEmpty
                     ? null
                     : Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          IconButton(
+                            tooltip: '상세',
+                            onPressed: (isEditing || isDeleting)
+                                ? null
+                                : () => _viewNoticeDetail(context, notice),
+                            icon: const Icon(Icons.visibility_outlined),
+                          ),
                           if (widget.onUpdate != null)
                             IconButton(
                               onPressed: (isEditing || isDeleting)

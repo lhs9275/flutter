@@ -36,6 +36,12 @@ class JobRequestRemoteManagementFlutter extends StatelessWidget {
     required this.onUpsertWorkRecord,
     required this.onFetchWorkRecordDetail,
     required this.onFetchNoShowSummary,
+    required this.matchStatusFilter,
+    required this.noShowFilter,
+    required this.workRecordStatusFilter,
+    required this.onMatchStatusFilterChanged,
+    required this.onNoShowFilterChanged,
+    required this.onWorkRecordStatusFilterChanged,
     this.isRefreshing = false,
     this.error,
   });
@@ -66,6 +72,12 @@ class JobRequestRemoteManagementFlutter extends StatelessWidget {
   final RemoteWorkRecordDetailCallback onFetchWorkRecordDetail;
   final Future<CwmpNoShowSummaryResponse> Function(int userId)
   onFetchNoShowSummary;
+  final String matchStatusFilter;
+  final String noShowFilter;
+  final String workRecordStatusFilter;
+  final ValueChanged<String> onMatchStatusFilterChanged;
+  final ValueChanged<String> onNoShowFilterChanged;
+  final ValueChanged<String> onWorkRecordStatusFilterChanged;
   final bool isRefreshing;
   final String? error;
 
@@ -543,6 +555,89 @@ class JobRequestRemoteManagementFlutter extends StatelessWidget {
     return 'Match #${match.id} · Worker #${match.workerId}';
   }
 
+  String _matchStatusFilterLabel(String value) {
+    switch (value) {
+      case 'APPLIED':
+        return '지원';
+      case 'PREFERRED':
+        return '우선선발';
+      case 'CONFIRMED':
+        return '확정';
+      case 'CANCELLED':
+        return '취소';
+      case 'NO_SHOW':
+        return '노쇼';
+      case 'ALL':
+      default:
+        return '전체';
+    }
+  }
+
+  String _noShowFilterLabel(String value) {
+    switch (value) {
+      case 'HAS_NO_SHOW':
+        return '노쇼 이력 있음';
+      case 'NO_NO_SHOW':
+        return '노쇼 이력 없음';
+      case 'ALL':
+      default:
+        return '전체';
+    }
+  }
+
+  String _workRecordFilterLabel(String value) {
+    switch (value) {
+      case 'NONE':
+        return '없음';
+      case 'CONFIRMED':
+        return '확인';
+      case 'REOPENED':
+        return '재오픈';
+      case 'SETTLED':
+        return '정산완료';
+      case 'ALL':
+      default:
+        return '전체';
+    }
+  }
+
+  Widget _buildFilterDropdown({
+    required String label,
+    required String value,
+    required List<String> values,
+    required String Function(String) labelOf,
+    required ValueChanged<String> onChanged,
+  }) {
+    return SizedBox(
+      width: 168,
+      child: DropdownButtonFormField<String>(
+        value: values.contains(value) ? value : values.first,
+        decoration: InputDecoration(
+          labelText: label,
+          isDense: true,
+          filled: true,
+          fillColor: const Color(0xFFFFFFFF),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
+          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        items: values
+            .map(
+              (v) => DropdownMenuItem<String>(
+                value: v,
+                child: Text(labelOf(v), overflow: TextOverflow.ellipsis),
+              ),
+            )
+            .toList(),
+        onChanged: (next) {
+          if (next != null) onChanged(next);
+        },
+      ),
+    );
+  }
+
   Widget _buildPendingRequestsCard(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(14),
@@ -684,6 +779,47 @@ class JobRequestRemoteManagementFlutter extends StatelessWidget {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildFilterDropdown(
+                label: '매칭 상태',
+                value: matchStatusFilter,
+                values: const [
+                  'ALL',
+                  'APPLIED',
+                  'PREFERRED',
+                  'CONFIRMED',
+                  'NO_SHOW',
+                  'CANCELLED',
+                ],
+                labelOf: _matchStatusFilterLabel,
+                onChanged: onMatchStatusFilterChanged,
+              ),
+              _buildFilterDropdown(
+                label: '노쇼 이력',
+                value: noShowFilter,
+                values: const ['ALL', 'HAS_NO_SHOW', 'NO_NO_SHOW'],
+                labelOf: _noShowFilterLabel,
+                onChanged: onNoShowFilterChanged,
+              ),
+              _buildFilterDropdown(
+                label: '근무기록 상태',
+                value: workRecordStatusFilter,
+                values: const [
+                  'ALL',
+                  'NONE',
+                  'CONFIRMED',
+                  'REOPENED',
+                  'SETTLED',
+                ],
+                labelOf: _workRecordFilterLabel,
+                onChanged: onWorkRecordStatusFilterChanged,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           if (publishedJobPosts.isEmpty)
             const Text(
               '발행된 공고가 없습니다.',
@@ -763,163 +899,217 @@ class JobRequestRemoteManagementFlutter extends StatelessWidget {
                       )
                     else
                       Column(
-                        children: matches.map((match) {
-                          final statusColor = _matchStatusColor(match.status);
-                          final status = match.status.toUpperCase();
-                          final cachedNoShow =
-                              noShowSummaryByUserId[match.workerId];
-                          final existingWorkRecord = _workRecordForMatch(
-                            jobPost.id,
-                            match.id,
-                          );
-                          final canConfirm =
-                              status != 'CONFIRMED' &&
-                              status != 'NO_SHOW' &&
-                              status != 'CANCELLED';
-                          final canNoShow =
-                              status != 'NO_SHOW' && status != 'CANCELLED';
-                          final canEditWorkRecord = status == 'CONFIRMED';
-                          return Container(
-                            margin: const EdgeInsets.only(top: 8),
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFFFFF),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: const Color(0xFFE2E8F0),
+                        children: () {
+                          final filteredMatches = matches.where((match) {
+                            final status = match.status.toUpperCase();
+                            if (matchStatusFilter != 'ALL' &&
+                                status != matchStatusFilter) {
+                              return false;
+                            }
+                            final cachedNoShow =
+                                noShowSummaryByUserId[match.workerId];
+                            final noShowCount = cachedNoShow?.count ?? 0;
+                            if (noShowFilter == 'HAS_NO_SHOW' &&
+                                noShowCount <= 0) {
+                              return false;
+                            }
+                            if (noShowFilter == 'NO_NO_SHOW' &&
+                                noShowCount > 0) {
+                              return false;
+                            }
+                            final existingWorkRecord = _workRecordForMatch(
+                              jobPost.id,
+                              match.id,
+                            );
+                            if (workRecordStatusFilter == 'NONE') {
+                              return existingWorkRecord == null;
+                            }
+                            if (workRecordStatusFilter != 'ALL') {
+                              if (existingWorkRecord == null) return false;
+                              if (existingWorkRecord.status.toUpperCase() !=
+                                  workRecordStatusFilter) {
+                                return false;
+                              }
+                            }
+                            return true;
+                          }).toList();
+                          if (filteredMatches.isEmpty) {
+                            return <Widget>[
+                              const Align(
+                                alignment: Alignment.centerLeft,
+                                child: Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 8),
+                                  child: Text(
+                                    '필터 조건에 맞는 지원자가 없습니다.',
+                                    style: TextStyle(color: Color(0xFF64748B)),
+                                  ),
+                                ),
                               ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(child: Text(_workerLabel(match))),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: statusColor.withOpacity(0.12),
-                                        borderRadius: BorderRadius.circular(
-                                          999,
-                                        ),
-                                        border: Border.all(
-                                          color: statusColor.withOpacity(0.35),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        _matchStatusLabel(match.status),
-                                        style: TextStyle(
-                                          color: statusColor,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                            ];
+                          }
+                          return filteredMatches.map((match) {
+                            final statusColor = _matchStatusColor(match.status);
+                            final status = match.status.toUpperCase();
+                            final cachedNoShow =
+                                noShowSummaryByUserId[match.workerId];
+                            final existingWorkRecord = _workRecordForMatch(
+                              jobPost.id,
+                              match.id,
+                            );
+                            final canConfirm =
+                                status != 'CONFIRMED' &&
+                                status != 'NO_SHOW' &&
+                                status != 'CANCELLED';
+                            final canNoShow =
+                                status != 'NO_SHOW' && status != 'CANCELLED';
+                            final canEditWorkRecord = status == 'CONFIRMED';
+                            return Container(
+                              margin: const EdgeInsets.only(top: 8),
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFFFFF),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: const Color(0xFFE2E8F0),
                                 ),
-                                const SizedBox(height: 6),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 6,
-                                  children: [
-                                    if (match.preferredHire) _chip('우선선발'),
-                                    if (match.selectionOrder != null)
-                                      _chip('순서 ${match.selectionOrder}'),
-                                    if (existingWorkRecord != null)
-                                      _chip('근무기록 있음'),
-                                    if (existingWorkRecord != null)
-                                      _chip(
-                                        '${existingWorkRecord.workDate} · ${existingWorkRecord.workUnits}공수',
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(_workerLabel(match)),
                                       ),
-                                    if (existingWorkRecord != null)
-                                      (() {
-                                        final colors = _workRecordStatusColors(
-                                          existingWorkRecord.status,
-                                        );
-                                        return _chip(
-                                          '정산상태 ${_workRecordStatusLabel(existingWorkRecord.status)}',
-                                          bg: colors.bg,
-                                          border: colors.border,
-                                          fg: colors.fg,
-                                        );
-                                      })(),
-                                    if (cachedNoShow != null)
-                                      _chip('노쇼 ${cachedNoShow.count}회'),
-                                    if ((match.note ?? '').trim().isNotEmpty)
-                                      _chip('메모: ${match.note!.trim()}'),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    OutlinedButton(
-                                      onPressed: () => _promptPrioritize(
-                                        context,
-                                        jobPostId: jobPost.id,
-                                        matchId: match.id,
-                                      ),
-                                      child: const Text('우선선발'),
-                                    ),
-                                    ElevatedButton(
-                                      onPressed: canConfirm
-                                          ? () => onConfirmMatch(
-                                              jobPost.id,
-                                              match.id,
-                                            )
-                                          : null,
-                                      child: const Text('확정'),
-                                    ),
-                                    OutlinedButton(
-                                      onPressed: canEditWorkRecord
-                                          ? () => _promptWorkRecordEditor(
-                                              context,
-                                              jobPost: jobPost,
-                                              match: match,
-                                            )
-                                          : null,
-                                      child: Text(
-                                        existingWorkRecord == null
-                                            ? '근무기록 입력'
-                                            : '근무기록 수정',
-                                      ),
-                                    ),
-                                    OutlinedButton(
-                                      onPressed: existingWorkRecord == null
-                                          ? null
-                                          : () => _showWorkRecordDetail(
-                                              context,
-                                              matchId: match.id,
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: statusColor.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                          border: Border.all(
+                                            color: statusColor.withOpacity(
+                                              0.35,
                                             ),
-                                      child: const Text('기록 상세'),
-                                    ),
-                                    OutlinedButton(
-                                      onPressed: canNoShow
-                                          ? () => _promptNoShow(
-                                              context,
-                                              jobPostId: jobPost.id,
-                                              matchId: match.id,
-                                            )
-                                          : null,
-                                      child: const Text('노쇼 기록'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => _showNoShowSummary(
-                                        context,
-                                        match.workerId,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          _matchStatusLabel(match.status),
+                                          style: TextStyle(
+                                            color: statusColor,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
                                       ),
-                                      child: const Text('노쇼 요약'),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    children: [
+                                      if (match.preferredHire) _chip('우선선발'),
+                                      if (match.selectionOrder != null)
+                                        _chip('순서 ${match.selectionOrder}'),
+                                      if (existingWorkRecord != null)
+                                        _chip('근무기록 있음'),
+                                      if (existingWorkRecord != null)
+                                        _chip(
+                                          '${existingWorkRecord.workDate} · ${existingWorkRecord.workUnits}공수',
+                                        ),
+                                      if (existingWorkRecord != null)
+                                        (() {
+                                          final colors =
+                                              _workRecordStatusColors(
+                                                existingWorkRecord.status,
+                                              );
+                                          return _chip(
+                                            '정산상태 ${_workRecordStatusLabel(existingWorkRecord.status)}',
+                                            bg: colors.bg,
+                                            border: colors.border,
+                                            fg: colors.fg,
+                                          );
+                                        })(),
+                                      if (cachedNoShow != null)
+                                        _chip('노쇼 ${cachedNoShow.count}회'),
+                                      if ((match.note ?? '').trim().isNotEmpty)
+                                        _chip('메모: ${match.note!.trim()}'),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      OutlinedButton(
+                                        onPressed: () => _promptPrioritize(
+                                          context,
+                                          jobPostId: jobPost.id,
+                                          matchId: match.id,
+                                        ),
+                                        child: const Text('우선선발'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: canConfirm
+                                            ? () => onConfirmMatch(
+                                                jobPost.id,
+                                                match.id,
+                                              )
+                                            : null,
+                                        child: const Text('확정'),
+                                      ),
+                                      OutlinedButton(
+                                        onPressed: canEditWorkRecord
+                                            ? () => _promptWorkRecordEditor(
+                                                context,
+                                                jobPost: jobPost,
+                                                match: match,
+                                              )
+                                            : null,
+                                        child: Text(
+                                          existingWorkRecord == null
+                                              ? '근무기록 입력'
+                                              : '근무기록 수정',
+                                        ),
+                                      ),
+                                      OutlinedButton(
+                                        onPressed: existingWorkRecord == null
+                                            ? null
+                                            : () => _showWorkRecordDetail(
+                                                context,
+                                                matchId: match.id,
+                                              ),
+                                        child: const Text('기록 상세'),
+                                      ),
+                                      OutlinedButton(
+                                        onPressed: canNoShow
+                                            ? () => _promptNoShow(
+                                                context,
+                                                jobPostId: jobPost.id,
+                                                matchId: match.id,
+                                              )
+                                            : null,
+                                        child: const Text('노쇼 기록'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => _showNoShowSummary(
+                                          context,
+                                          match.workerId,
+                                        ),
+                                        child: const Text('노쇼 요약'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList();
+                        }(),
                       ),
                   ],
                 ),

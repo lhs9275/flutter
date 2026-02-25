@@ -180,9 +180,13 @@ class _NoticeViewFlutterState extends State<NoticeViewFlutter> {
       ),
     ];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: children,
+    return RefreshIndicator(
+      onRefresh: _loadNotices,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+        children: children,
+      ),
     );
   }
 }

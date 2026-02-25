@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../data/cwmp_api_models.dart';
 import '../../data/cwmp_api_repository.dart';
@@ -50,7 +51,14 @@ class EmployerAppFlutter extends StatefulWidget {
 }
 
 class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
+  static const String _kPrefEmployerView = 'cwmp_employer_view';
+  static const String _kPrefEmployerSelectedSiteIndex =
+      'cwmp_employer_selected_site_index';
+  static const String _kPrefEmployerShowNoShowOnly =
+      'cwmp_employer_show_noshow_only';
+
   late EmployerView _view;
+  EmployerView? _restoredAuthedEmployerView;
   bool _rememberMe = true;
   int _selectedSiteIndex = 0;
   bool _showNoShowOnly = false;
@@ -206,6 +214,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
   }
 
   Future<void> _bootstrapSession() async {
+    await _restoreEmployerUiState();
     final session = await CwmpSessionStore.read();
     if (!mounted || session == null) return;
     if (!(session.role == CwmpUserRole.employer ||
@@ -214,7 +223,9 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     }
     setState(() {
       _session = session;
-      if (_view == EmployerView.login || _view == EmployerView.auth) {
+      if (_restoredAuthedEmployerView != null) {
+        _view = _restoredAuthedEmployerView!;
+      } else if (_view == EmployerView.login || _view == EmployerView.auth) {
         _view = EmployerView.dashboard;
       }
     });
@@ -247,6 +258,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
         notices = await CwmpApiRepository.instance.getNotifications();
       }
       if (!mounted) return;
+      var clampedSelectedSiteIndex = false;
       setState(() {
         _remoteSites = sites.map(CwmpEmployerAppAdapter.toSiteMap).toList();
         _remoteJobRequests = jobs
@@ -263,8 +275,15 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
         );
         if (_selectedSiteIndex >= _remoteSites.length) {
           _selectedSiteIndex = 0;
+          clampedSelectedSiteIndex = true;
         }
       });
+      if (clampedSelectedSiteIndex) {
+        _persistEmployerUiState();
+      }
+      if (_view == EmployerView.jobRequest) {
+        _prefetchNavigationLinksForSelectedSite();
+      }
     } on CwmpApiException catch (e) {
       if (!mounted) return;
       if (e.statusCode == 401) {
@@ -303,6 +322,82 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     }
   }
 
+  bool _isPersistableEmployerView(EmployerView view) {
+    return view != EmployerView.login &&
+        view != EmployerView.auth &&
+        view != EmployerView.register;
+  }
+
+  Future<void> _restoreEmployerUiState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedIndex = prefs.getInt(_kPrefEmployerSelectedSiteIndex) ?? 0;
+    final savedNoShowOnly =
+        prefs.getBool(_kPrefEmployerShowNoShowOnly) ?? false;
+    final savedViewName = (prefs.getString(_kPrefEmployerView) ?? '').trim();
+    EmployerView? restoredView;
+    for (final value in EmployerView.values) {
+      if (value.name == savedViewName && _isPersistableEmployerView(value)) {
+        restoredView = value;
+        break;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _selectedSiteIndex = savedIndex < 0 ? 0 : savedIndex;
+      _showNoShowOnly = savedNoShowOnly;
+      _restoredAuthedEmployerView = restoredView;
+    });
+  }
+
+  Future<void> _persistEmployerUiState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kPrefEmployerSelectedSiteIndex, _selectedSiteIndex);
+    await prefs.setBool(_kPrefEmployerShowNoShowOnly, _showNoShowOnly);
+    if (_isPersistableEmployerView(_view)) {
+      await prefs.setString(_kPrefEmployerView, _view.name);
+    }
+  }
+
+  void _setEmployerView(EmployerView view) {
+    if (_view == view) return;
+    setState(() => _view = view);
+    _persistEmployerUiState();
+    if (view == EmployerView.jobRequest) {
+      _prefetchNavigationLinksForSelectedSite();
+    }
+  }
+
+  void _openEmployerJobRequestForSite(int index) {
+    setState(() {
+      _selectedSiteIndex = index;
+      _view = EmployerView.jobRequest;
+    });
+    _persistEmployerUiState();
+    _prefetchNavigationLinksForSelectedSite();
+  }
+
+  void _setShowNoShowOnly(bool value) {
+    if (_showNoShowOnly == value) return;
+    setState(() => _showNoShowOnly = value);
+    _persistEmployerUiState();
+  }
+
+  void _prefetchNavigationLinksForSelectedSite({bool forceRefresh = false}) {
+    if (!_hasRemoteSession) return;
+    final sites = _sites;
+    if (sites.isEmpty) return;
+    final safeIndex = _selectedSiteIndex >= sites.length
+        ? 0
+        : _selectedSiteIndex;
+    final site = sites[safeIndex];
+    final remoteSiteId = CwmpEmployerAppAdapter.siteIdFromMap(site);
+    if (remoteSiteId == null) return;
+    if (!forceRefresh && _remoteNavLinksBySiteId.containsKey(remoteSiteId)) {
+      return;
+    }
+    _loadNavigationLinksForSite(context, site, silent: true);
+  }
+
   Future<void> _logout() async {
     await CwmpSessionStore.clear();
     if (!mounted) return;
@@ -321,14 +416,17 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
 
   Future<void> _loadNavigationLinksForSite(
     BuildContext context,
-    Map<String, dynamic> site,
-  ) async {
+    Map<String, dynamic> site, {
+    bool silent = false,
+  }) async {
     if (!_hasRemoteSession) return;
     final remoteSiteId = CwmpEmployerAppAdapter.siteIdFromMap(site);
     if (remoteSiteId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('서버 현장 ID를 확인할 수 없습니다.')));
+      if (!silent) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('서버 현장 ID를 확인할 수 없습니다.')));
+      }
       return;
     }
     if (_remoteNavLinksLoadingSiteIds.contains(remoteSiteId)) return;
@@ -341,7 +439,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
       setState(() {
         _remoteNavLinksBySiteId[remoteSiteId] = links;
       });
-      if (!links.hasAnyLink) {
+      if (!links.hasAnyLink && !silent) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('사용 가능한 네비 링크가 없습니다.')));
@@ -352,14 +450,18 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
         await _handleSessionExpired(showMessage: true);
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('네비 링크 조회 실패: ${e.message}')));
+      if (!silent) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('네비 링크 조회 실패: ${e.message}')));
+      }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('네비 링크 조회 중 오류: $e')));
+      if (!silent) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('네비 링크 조회 중 오류: $e')));
+      }
     } finally {
       if (mounted) {
         setState(() => _remoteNavLinksLoadingSiteIds.remove(remoteSiteId));
@@ -413,21 +515,21 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
         return AppBar(
           title: const Text('신규 현장 등록'),
           leading: BackButton(
-            onPressed: () => setState(() => _view = EmployerView.dashboard),
+            onPressed: () => _setEmployerView(EmployerView.dashboard),
           ),
         );
       case EmployerView.jobRequest:
         return AppBar(
           title: const Text('구인 요청'),
           leading: BackButton(
-            onPressed: () => setState(() => _view = EmployerView.dashboard),
+            onPressed: () => _setEmployerView(EmployerView.dashboard),
           ),
         );
       case EmployerView.notices:
         return AppBar(
           title: const Text('파트너 공지사항'),
           leading: BackButton(
-            onPressed: () => setState(() => _view = EmployerView.dashboard),
+            onPressed: () => _setEmployerView(EmployerView.dashboard),
           ),
         );
     }
@@ -474,6 +576,18 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
   }
 
   Widget _buildLogin() {
+    return _buildStandaloneAuthNotice();
+  }
+
+  Widget _buildAuth() {
+    return _buildStandaloneAuthNotice();
+  }
+
+  Widget _buildRegister() {
+    return _buildStandaloneAuthNotice();
+  }
+
+  Widget _buildStandaloneAuthNotice() {
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -487,123 +601,49 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
             const Text('현장 관리자 전용', style: TextStyle(color: Color(0xFF475569))),
             const SizedBox(height: 24),
             _sectionCard(
-              title: '로그인',
+              title: '전화인증 로그인 안내',
               children: [
-                TextField(
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: '휴대폰 번호',
-                    filled: true,
-                  ),
+                const Text(
+                  '구인자/관리자 전화 OTP 로그인은 통합 시작 화면(라우터)에서 진행됩니다.',
+                  style: TextStyle(color: Color(0xFF475569)),
                 ),
                 const SizedBox(height: 12),
-                SwitchListTile(
-                  value: _rememberMe,
-                  onChanged: (value) => setState(() => _rememberMe = value),
-                  title: const Text('로그인 상태 유지'),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: const Text(
+                    '통합 앱에서 전화인증 완료 후 이 화면으로 돌아오면 저장된 세션으로 자동 진입합니다.',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => setState(() => _view = EmployerView.auth),
-                    child: const Text('인증번호 받기'),
+                  child: OutlinedButton.icon(
+                    onPressed: _bootstrapSession,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('저장된 세션 다시 확인'),
                   ),
                 ),
+                if (!widget.embedded) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => _setEmployerView(EmployerView.dashboard),
+                      child: const Text('목업 미리보기로 열기'),
+                    ),
+                  ),
+                ],
               ],
             ),
-            const SizedBox(height: 8),
-            const Text(
-              '테스트 계정: 01099998888',
-              style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
-            ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildAuth() {
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: _sectionCard(
-          title: '인증번호 입력',
-          children: [
-            TextField(
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: '인증번호 6자리',
-                filled: true,
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => setState(() => _view = EmployerView.dashboard),
-                child: const Text('인증 완료 (기존 계정)'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: () => setState(() => _view = EmployerView.register),
-              child: const Text('신규 가입하기'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRegister() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _sectionCard(
-            title: '기본 정보',
-            children: [
-              TextField(
-                decoration: const InputDecoration(
-                  labelText: '이름',
-                  filled: true,
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                decoration: const InputDecoration(
-                  labelText: '상호명 (건설사)',
-                  filled: true,
-                ),
-              ),
-            ],
-          ),
-          _sectionCard(
-            title: '명함 첨부',
-            children: [
-              Container(
-                height: 120,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: const Color(0xFFE2E8F0),
-                    style: BorderStyle.solid,
-                  ),
-                ),
-                child: const Center(child: Text('명함 촬영 또는 업로드')),
-              ),
-            ],
-          ),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => setState(() => _view = EmployerView.dashboard),
-              child: const Text('가입 완료'),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -630,13 +670,12 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
               Row(
                 children: [
                   IconButton(
-                    onPressed: () =>
-                        setState(() => _view = EmployerView.notices),
+                    onPressed: () => _setEmployerView(EmployerView.notices),
                     icon: const Icon(Icons.campaign),
                   ),
                   IconButton(
                     onPressed: () =>
-                        setState(() => _view = EmployerView.siteRegister),
+                        _setEmployerView(EmployerView.siteRegister),
                     icon: const Icon(Icons.add_business),
                   ),
                 ],
@@ -677,10 +716,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
             return GestureDetector(
               onTap: () {
                 if (status == SiteStatus.approved) {
-                  setState(() {
-                    _selectedSiteIndex = index;
-                    _view = EmployerView.jobRequest;
-                  });
+                  _openEmployerJobRequestForSite(index);
                 }
               },
               child: Container(
@@ -748,10 +784,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                         alignment: Alignment.centerRight,
                         child: TextButton(
                           onPressed: () {
-                            setState(() {
-                              _selectedSiteIndex = index;
-                              _view = EmployerView.jobRequest;
-                            });
+                            _openEmployerJobRequestForSite(index);
                           },
                           child: const Text('구인 요청하기 >'),
                         ),
@@ -1049,7 +1082,9 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                           ? '실서버 로그인 후 네이버/카카오/Tmap 네비 링크를 사용할 수 있습니다.'
                           : remoteSiteId == null
                           ? '현장 ID를 확인할 수 없어 네비 링크를 조회할 수 없습니다.'
-                          : '승인된 현장인 경우 네비 링크를 불러올 수 있습니다.',
+                          : remoteNavLinks != null
+                          ? '현장 선택 시 자동 조회된 네비 링크입니다. 필요하면 새로고침하세요.'
+                          : '현장 선택 시 네비 링크를 자동으로 조회합니다.',
                       style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFF64748B),
@@ -1079,7 +1114,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                               : const Icon(Icons.alt_route),
                           label: Text(
                             remoteNavLinks == null
-                                ? '네비 링크 불러오기'
+                                ? '네비 링크 다시 조회'
                                 : '네비 링크 새로고침',
                           ),
                         ),
@@ -1583,8 +1618,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                     ChoiceChip(
                       label: const Text('전체'),
                       selected: !_showNoShowOnly,
-                      onSelected: (_) =>
-                          setState(() => _showNoShowOnly = false),
+                      onSelected: (_) => _setShowNoShowOnly(false),
                       selectedColor: const Color(0xFFDBEAFE),
                       labelStyle: TextStyle(
                         color: !_showNoShowOnly
@@ -1595,7 +1629,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                     ChoiceChip(
                       label: const Text('노쇼 있음'),
                       selected: _showNoShowOnly,
-                      onSelected: (_) => setState(() => _showNoShowOnly = true),
+                      onSelected: (_) => _setShowNoShowOnly(true),
                       selectedColor: const Color(0xFFFEE2E2),
                       labelStyle: TextStyle(
                         color: _showNoShowOnly
@@ -1837,7 +1871,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('현장 등록 요청이 접수되었습니다.')));
-    setState(() => _view = EmployerView.dashboard);
+    _setEmployerView(EmployerView.dashboard);
   }
 
   Future<void> _submitJobRequest(
@@ -2359,50 +2393,60 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
               final dateText = created == null
                   ? '-'
                   : '${created.year.toString().padLeft(4, '0')}-${created.month.toString().padLeft(2, '0')}-${created.day.toString().padLeft(2, '0')}';
-              return _sectionCard(
-                title: notice.title,
-                children: [
-                  Row(
+              return Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => _openRemoteNoticeDetail(notice),
+                  child: _sectionCard(
+                    title: notice.title,
                     children: [
-                      Text(
-                        dateText,
-                        style: const TextStyle(color: Color(0xFF64748B)),
-                      ),
-                      if (notice.isEmergency) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+                      Row(
+                        children: [
+                          Text(
+                            dateText,
+                            style: const TextStyle(color: Color(0xFF64748B)),
                           ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFEE2E2),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: const Color(0xFFFCA5A5)),
-                          ),
-                          child: const Text(
-                            '긴급',
-                            style: TextStyle(
-                              color: Color(0xFFB91C1C),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                          if (notice.isEmergency) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEE2E2),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: const Color(0xFFFCA5A5),
+                                ),
+                              ),
+                              child: const Text(
+                                '긴급',
+                                style: TextStyle(
+                                  color: Color(0xFFB91C1C),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ),
+                          ],
+                          const Spacer(),
+                          const Icon(
+                            Icons.chevron_right,
+                            size: 18,
+                            color: Color(0xFF94A3B8),
                           ),
-                        ),
-                      ],
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () => _openRemoteNoticeDetail(notice),
-                        child: const Text('상세'),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        notice.content,
+                        style: const TextStyle(color: Color(0xFF475569)),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    notice.content,
-                    style: const TextStyle(color: Color(0xFF475569)),
-                  ),
-                ],
+                ),
               );
             }),
         ],

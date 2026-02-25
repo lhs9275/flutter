@@ -174,6 +174,31 @@ class SiteDetailFlutter extends StatelessWidget {
                 _DetailCard(
                   title: '네비 앱 링크',
                   children: [
+                    if (onReloadServerNavigationLinks != null)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          onPressed: isServerNavigationLinksLoading
+                              ? null
+                              : onReloadServerNavigationLinks,
+                          icon: isServerNavigationLinksLoading
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.refresh, size: 16),
+                          label: Text(
+                            serverNavigationLinks?.hasAnyLink == true
+                                ? '네비 링크 새로고침'
+                                : '네비 링크 불러오기',
+                          ),
+                        ),
+                      ),
+                    if (onReloadServerNavigationLinks != null)
+                      const SizedBox(height: 8),
                     if (isServerNavigationLinksLoading)
                       const Padding(
                         padding: EdgeInsets.only(bottom: 8),

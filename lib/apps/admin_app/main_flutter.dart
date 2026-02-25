@@ -3,13 +3,13 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/cwmp_api_models.dart';
 import '../../data/cwmp_api_repository.dart';
 import '../../data/cwmp_employer_app_adapter.dart';
 import '../../data/cwmp_session_store.dart';
 import '../../data/mock_backend.dart';
-import 'screens/admin_login_flutter.dart';
 import 'screens/daily_work_management_flutter.dart';
 import 'screens/job_request_management_flutter.dart';
 import 'screens/job_request_remote_management_flutter.dart';
@@ -65,6 +65,12 @@ class AdminAppFlutter extends StatefulWidget {
 }
 
 class _AdminAppFlutterState extends State<AdminAppFlutter> {
+  static const String _kPrefAdminView = 'cwmp_admin_view';
+  static const String _kPrefAdminMatchStatusFilter =
+      'cwmp_admin_match_status_filter';
+  static const String _kPrefAdminNoShowFilter = 'cwmp_admin_noshow_filter';
+  static const String _kPrefAdminWorkRecordStatusFilter =
+      'cwmp_admin_work_record_status_filter';
   static const String _kakaoRestApiKeyPrimary = String.fromEnvironment(
     'KAKAO_REST_API_KEY',
   );
@@ -74,6 +80,7 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
 
   late bool _isAuthenticated;
   late AdminView _view;
+  AdminView? _restoredAdminView;
   Map<String, dynamic>? _selectedMember;
   bool _isRemoteLoading = false;
   String? _remoteLoadError;
@@ -88,6 +95,9 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
   final Set<int> _remoteWorkRecordsLoadingJobPostIds = <int>{};
   final Map<int, String> _remoteWorkerNamesByUserId = {};
   final Map<int, CwmpNoShowSummaryResponse> _remoteNoShowSummaryByUserId = {};
+  String _matchStatusFilter = 'ALL';
+  String _matchNoShowFilter = 'ALL';
+  String _matchWorkRecordStatusFilter = 'ALL';
 
   final ThemeData _theme = ThemeData(
     brightness: Brightness.light,
@@ -140,6 +150,7 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
   }
 
   Future<void> _bootstrapSession() async {
+    await _restoreAdminUiState();
     final session = await CwmpSessionStore.read();
     if (!mounted) return;
     if (session == null || session.role != CwmpUserRole.admin) {
@@ -161,8 +172,71 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
     setState(() {
       _session = session;
       _isAuthenticated = true;
+      if (_restoredAdminView != null) {
+        _view = _restoredAdminView!;
+      }
     });
     await _refreshRemoteAdminData();
+  }
+
+  Future<void> _restoreAdminUiState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedViewName = (prefs.getString(_kPrefAdminView) ?? '').trim();
+    final savedMatchStatus =
+        (prefs.getString(_kPrefAdminMatchStatusFilter) ?? '').trim();
+    final savedNoShow = (prefs.getString(_kPrefAdminNoShowFilter) ?? '').trim();
+    final savedWorkRecordStatus =
+        (prefs.getString(_kPrefAdminWorkRecordStatusFilter) ?? '').trim();
+
+    AdminView? restoredView;
+    for (final value in AdminView.values) {
+      if (value.name == savedViewName) {
+        restoredView = value;
+        break;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _restoredAdminView = restoredView;
+      if (savedMatchStatus.isNotEmpty) {
+        _matchStatusFilter = savedMatchStatus;
+      }
+      if (savedNoShow.isNotEmpty) {
+        _matchNoShowFilter = savedNoShow;
+      }
+      if (savedWorkRecordStatus.isNotEmpty) {
+        _matchWorkRecordStatusFilter = savedWorkRecordStatus;
+      }
+    });
+  }
+
+  Future<void> _persistAdminUiState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPrefAdminView, _view.name);
+    await prefs.setString(_kPrefAdminMatchStatusFilter, _matchStatusFilter);
+    await prefs.setString(_kPrefAdminNoShowFilter, _matchNoShowFilter);
+    await prefs.setString(
+      _kPrefAdminWorkRecordStatusFilter,
+      _matchWorkRecordStatusFilter,
+    );
+  }
+
+  void _setAdminMatchStatusFilter(String value) {
+    if (_matchStatusFilter == value) return;
+    setState(() => _matchStatusFilter = value);
+    _persistAdminUiState();
+  }
+
+  void _setAdminNoShowFilter(String value) {
+    if (_matchNoShowFilter == value) return;
+    setState(() => _matchNoShowFilter = value);
+    _persistAdminUiState();
+  }
+
+  void _setAdminWorkRecordStatusFilter(String value) {
+    if (_matchWorkRecordStatusFilter == value) return;
+    setState(() => _matchWorkRecordStatusFilter = value);
+    _persistAdminUiState();
   }
 
   Future<void> _refreshRemoteAdminData() async {
@@ -803,6 +877,7 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
           _view = view;
           _selectedMember = null;
         });
+        _persistAdminUiState();
         Navigator.of(context).pop();
         if (view == AdminView.jobRequests) {
           _prefetchRemoteMatchesForPublishedJobPosts();
@@ -867,6 +942,12 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
             onUpsertWorkRecord: _upsertRemoteWorkRecordForMatch,
             onFetchWorkRecordDetail: _fetchRemoteWorkRecordForMatch,
             onFetchNoShowSummary: _fetchNoShowSummaryForUser,
+            matchStatusFilter: _matchStatusFilter,
+            noShowFilter: _matchNoShowFilter,
+            workRecordStatusFilter: _matchWorkRecordStatusFilter,
+            onMatchStatusFilterChanged: _setAdminMatchStatusFilter,
+            onNoShowFilterChanged: _setAdminNoShowFilter,
+            onWorkRecordStatusFilterChanged: _setAdminWorkRecordStatusFilter,
           );
         }
         return JobRequestManagementFlutter(
@@ -1486,9 +1567,62 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
         ),
       );
     }
-    return Scaffold(
-      body: AdminLoginFlutter(
-        onLogin: () => setState(() => _isAuthenticated = true),
+    return Scaffold(body: _buildStandaloneAdminLoginNotice());
+  }
+
+  Widget _buildStandaloneAdminLoginNotice() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          width: 460,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFFFF),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                '관리자 앱',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '관리자 전화 OTP 로그인은 통합 시작 화면(라우터)에서 진행됩니다.',
+                style: TextStyle(color: Color(0xFF475569)),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: const Text(
+                  '통합 앱에서 전화인증 후 돌아오면 저장된 세션으로 자동 진입합니다.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _bootstrapSession,
+                icon: const Icon(Icons.refresh),
+                label: const Text('저장된 세션 다시 확인'),
+              ),
+              if (!widget.embedded) ...[
+                const SizedBox(height: 8),
+                ElevatedButton(
+                  onPressed: () => setState(() => _isAuthenticated = true),
+                  child: const Text('목업 미리보기로 열기'),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
