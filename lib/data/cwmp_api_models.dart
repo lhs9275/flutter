@@ -301,6 +301,7 @@ class CwmpConstructionSiteResponse {
     required this.contactName,
     required this.contactPhone,
     required this.businessInfo,
+    required this.regionCode,
     required this.approvalStatus,
     required this.approvedAt,
     required this.rejectionReason,
@@ -315,6 +316,7 @@ class CwmpConstructionSiteResponse {
   final String contactName;
   final String contactPhone;
   final String? businessInfo;
+  final String? regionCode;
   final String approvalStatus;
   final DateTime? approvedAt;
   final String? rejectionReason;
@@ -330,6 +332,7 @@ class CwmpConstructionSiteResponse {
       contactName: _asString(json['contactName']),
       contactPhone: _asString(json['contactPhone']),
       businessInfo: json['businessInfo']?.toString(),
+      regionCode: json['regionCode']?.toString(),
       approvalStatus: _asString(json['approvalStatus']),
       approvedAt: DateTime.tryParse(_asString(json['approvedAt'])),
       rejectionReason: json['rejectionReason']?.toString(),
@@ -341,6 +344,7 @@ class CwmpJobRequestResponse {
   const CwmpJobRequestResponse({
     required this.id,
     required this.siteId,
+    required this.jobPostId,
     required this.siteName,
     required this.workDate,
     required this.startTime,
@@ -355,6 +359,7 @@ class CwmpJobRequestResponse {
 
   final int id;
   final int siteId;
+  final int? jobPostId;
   final String siteName;
   final String workDate;
   final String? startTime;
@@ -370,6 +375,7 @@ class CwmpJobRequestResponse {
     return CwmpJobRequestResponse(
       id: _asInt(json['id']) ?? 0,
       siteId: _asInt(json['siteId']) ?? 0,
+      jobPostId: _asInt(json['jobPostId']) ?? _asInt(json['job_post_id']),
       siteName: _asString(json['siteName']),
       workDate: _asString(json['workDate']),
       startTime: json['startTime']?.toString(),
@@ -561,6 +567,223 @@ class CwmpSiteNavigationLinksResponse {
       naver: json['naver']?.toString(),
       kakao: json['kakao']?.toString(),
       tmap: json['tmap']?.toString(),
+    );
+  }
+}
+
+class CwmpAttendanceCheckResponse {
+  const CwmpAttendanceCheckResponse({
+    required this.id,
+    required this.workerId,
+    required this.jobPostId,
+    required this.siteId,
+    required this.siteName,
+    required this.workDate,
+    required this.occurredAt,
+    required this.alreadyCheckedIn,
+  });
+
+  final int id;
+  final int? workerId;
+  final int? jobPostId;
+  final int? siteId;
+  final String? siteName;
+  final String workDate;
+  final DateTime? occurredAt;
+  final bool alreadyCheckedIn;
+
+  factory CwmpAttendanceCheckResponse.fromJson(Map<String, dynamic> json) {
+    return CwmpAttendanceCheckResponse(
+      id: _asInt(json['id']) ?? 0,
+      workerId: _asInt(json['workerId']),
+      jobPostId: _asInt(json['jobPostId']),
+      siteId: _asInt(json['siteId']),
+      siteName: json['siteName']?.toString(),
+      workDate: _asString(json['workDate']),
+      occurredAt: DateTime.tryParse(_asString(json['occurredAt'])),
+      alreadyCheckedIn: _asBool(json['alreadyCheckedIn']),
+    );
+  }
+}
+
+class CwmpUserProfileResponse {
+  const CwmpUserProfileResponse({
+    required this.id,
+    required this.phoneNumber,
+    required this.name,
+    required this.role,
+    required this.phoneVerified,
+    required this.gender,
+    required this.nationality,
+    required this.address,
+    required this.idNumber,
+    required this.bankName,
+    required this.accountNumber,
+    required this.accountHolder,
+  });
+
+  final int id;
+  final String phoneNumber;
+  final String? name;
+  final CwmpUserRole role;
+  final bool phoneVerified;
+  final String? gender;
+  final String? nationality;
+  final String? address;
+  final String? idNumber;
+  final String? bankName;
+  final String? accountNumber;
+  final String? accountHolder;
+
+  factory CwmpUserProfileResponse.fromJson(Map<String, dynamic> json) {
+    return CwmpUserProfileResponse(
+      id: _asInt(json['id']) ?? 0,
+      phoneNumber: _asString(json['phoneNumber']),
+      name: json['name']?.toString(),
+      role: CwmpUserRoleX.fromApi(_asString(json['role'], fallback: 'WORKER')),
+      phoneVerified: _asBool(json['phoneVerified']),
+      gender: json['gender']?.toString(),
+      nationality: json['nationality']?.toString(),
+      address: json['address']?.toString(),
+      idNumber: json['idNumber']?.toString(),
+      bankName: json['bankName']?.toString(),
+      accountNumber: json['accountNumber']?.toString(),
+      accountHolder: json['accountHolder']?.toString(),
+    );
+  }
+}
+
+class CwmpAdminUserSummaryResponse {
+  const CwmpAdminUserSummaryResponse({
+    required this.id,
+    required this.name,
+    required this.phoneNumber,
+    required this.role,
+    required this.perm,
+    required this.phoneVerified,
+    required this.status,
+    required this.noShowCount,
+    required this.latestNoShowAt,
+  });
+
+  final int id;
+  final String? name;
+  final String phoneNumber;
+  final String role;
+  final int perm;
+  final bool phoneVerified;
+  final String status;
+  final int noShowCount;
+  final DateTime? latestNoShowAt;
+
+  factory CwmpAdminUserSummaryResponse.fromJson(Map<String, dynamic> json) {
+    return CwmpAdminUserSummaryResponse(
+      id: _asInt(json['id']) ?? 0,
+      name: json['name']?.toString(),
+      phoneNumber: _asString(json['phoneNumber']),
+      role: _asString(json['role']),
+      perm: _asInt(json['perm']) ?? 0,
+      phoneVerified: _asBool(json['phoneVerified']),
+      status: _asString(json['status']),
+      noShowCount: _asInt(json['noShowCount']) ?? 0,
+      latestNoShowAt: DateTime.tryParse(_asString(json['latestNoShowAt'])),
+    );
+  }
+}
+
+class CwmpAdminUserDetailResponse {
+  const CwmpAdminUserDetailResponse({
+    required this.summary,
+    required this.email,
+    required this.gender,
+    required this.nationality,
+    required this.address,
+    required this.idNumber,
+    required this.bankName,
+    required this.accountNumber,
+    required this.accountHolder,
+  });
+
+  final CwmpAdminUserSummaryResponse summary;
+  final String? email;
+  final String? gender;
+  final String? nationality;
+  final String? address;
+  final String? idNumber;
+  final String? bankName;
+  final String? accountNumber;
+  final String? accountHolder;
+
+  factory CwmpAdminUserDetailResponse.fromJson(Map<String, dynamic> json) {
+    final summaryJson = Map<String, dynamic>.from(
+      json['summary'] as Map? ?? const {},
+    );
+    return CwmpAdminUserDetailResponse(
+      summary: CwmpAdminUserSummaryResponse.fromJson(summaryJson),
+      email: json['email']?.toString(),
+      gender: json['gender']?.toString(),
+      nationality: json['nationality']?.toString(),
+      address: json['address']?.toString(),
+      idNumber: json['idNumber']?.toString(),
+      bankName: json['bankName']?.toString(),
+      accountNumber: json['accountNumber']?.toString(),
+      accountHolder: json['accountHolder']?.toString(),
+    );
+  }
+}
+
+class CwmpAdminPermissionTemplateResponse {
+  const CwmpAdminPermissionTemplateResponse({
+    required this.key,
+    required this.name,
+    required this.description,
+    required this.permLevel,
+  });
+
+  final String key;
+  final String name;
+  final String description;
+  final int permLevel;
+
+  factory CwmpAdminPermissionTemplateResponse.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    return CwmpAdminPermissionTemplateResponse(
+      key: _asString(json['key']),
+      name: _asString(json['name']),
+      description: _asString(json['description']),
+      permLevel: _asInt(json['permLevel']) ?? 0,
+    );
+  }
+}
+
+class CwmpAdminPermissionUserResponse {
+  const CwmpAdminPermissionUserResponse({
+    required this.id,
+    required this.name,
+    required this.phoneNumber,
+    required this.role,
+    required this.perm,
+    required this.authorities,
+  });
+
+  final int id;
+  final String? name;
+  final String phoneNumber;
+  final String? role;
+  final int perm;
+  final List<String> authorities;
+
+  factory CwmpAdminPermissionUserResponse.fromJson(Map<String, dynamic> json) {
+    return CwmpAdminPermissionUserResponse(
+      id: _asInt(json['id']) ?? 0,
+      name: json['name']?.toString(),
+      phoneNumber: _asString(json['phoneNumber']),
+      role: json['role']?.toString(),
+      perm: _asInt(json['perm']) ?? 0,
+      authorities: (json['authorities'] as List? ?? const [])
+          .map((e) => e.toString())
+          .toList(),
     );
   }
 }

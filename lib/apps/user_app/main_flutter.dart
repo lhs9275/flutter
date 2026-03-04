@@ -175,6 +175,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
         _nameController.text = session.name!.trim();
       }
     });
+    await _loadRemoteProfile();
     await _loadRemotePreferences();
     await _refreshRemoteSites();
   }
@@ -479,6 +480,30 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     }
   }
 
+  Future<void> _loadRemoteProfile() async {
+    if (!_hasRemoteSession) return;
+    try {
+      final profile = await CwmpApiRepository.instance.getMyProfile();
+      if (!mounted) return;
+      setState(() {
+        if ((profile.name ?? '').trim().isNotEmpty) {
+          _nameController.text = profile.name!.trim();
+        }
+        _gender = (profile.gender ?? '').trim().isEmpty
+            ? _gender
+            : profile.gender!.trim().toLowerCase();
+        _nationalityController.text = (profile.nationality ?? '').trim();
+        _addressController.text = (profile.address ?? '').trim();
+        _idNumberController.text = (profile.idNumber ?? '').trim();
+        _bankController.text = (profile.bankName ?? '').trim();
+        _accountController.text = (profile.accountNumber ?? '').trim();
+        _ownerController.text = (profile.accountHolder ?? '').trim();
+      });
+    } catch (_) {
+      // Profile is optional; keep local inputs when loading fails.
+    }
+  }
+
   Future<void> _handleSessionExpired({bool showMessage = true}) async {
     await CwmpSessionStore.clear();
     if (!mounted) return;
@@ -587,6 +612,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
         }
         _view = response.firstLogin ? UserView.register : UserView.sites;
       });
+      await _loadRemoteProfile();
       await _loadRemotePreferences();
       await _refreshRemoteSites();
     } on CwmpApiException catch (e) {
@@ -611,6 +637,7 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     if (phone.isNotEmpty) {
       _registeredPhones.add(phone);
     }
+    await _saveProfileToBackend(context);
     await _savePreferencesToBackend(context);
     if (!mounted) return;
     setState(() => _view = UserView.sites);
@@ -723,10 +750,56 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
     }
   }
 
+  Future<void> _saveProfileToBackend(BuildContext context) async {
+    if (!_hasRemoteSession) return;
+    try {
+      final profile = await CwmpApiRepository.instance.updateMyProfile(
+        name: _nameController.text.trim(),
+        gender: _gender.trim(),
+        nationality: _nationalityController.text.trim(),
+        address: _addressController.text.trim(),
+        idNumber: _idNumberController.text.trim(),
+        bankName: _bankController.text.trim(),
+        accountNumber: _accountController.text.trim(),
+        accountHolder: _ownerController.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        if ((profile.name ?? '').trim().isNotEmpty) {
+          _nameController.text = profile.name!.trim();
+        }
+        _addressController.text = (profile.address ?? '').trim();
+        _nationalityController.text = (profile.nationality ?? '').trim();
+        _idNumberController.text = (profile.idNumber ?? '').trim();
+        _bankController.text = (profile.bankName ?? '').trim();
+        _accountController.text = (profile.accountNumber ?? '').trim();
+        _ownerController.text = (profile.accountHolder ?? '').trim();
+        if ((profile.gender ?? '').trim().isNotEmpty) {
+          _gender = profile.gender!.trim().toLowerCase();
+        }
+      });
+    } on CwmpApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 401) {
+        await _handleSessionExpired(showMessage: true);
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('프로필 저장 실패: ${e.message}')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('프로필 저장 중 오류가 발생했습니다: $e')));
+    }
+  }
+
   Future<void> _saveProfileAndClose(BuildContext context) async {
     if (_isProfileSaving) return;
     setState(() => _isProfileSaving = true);
     try {
+      await _saveProfileToBackend(context);
       await _savePreferencesToBackend(context);
       if (!mounted) return;
       setState(() => _view = UserView.sites);
@@ -1318,6 +1391,9 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
           child: EditProfileFormFlutter(
             onCancel: () => setState(() => _view = UserView.sites),
             onSave: () => _saveProfileAndClose(context),
+            nameController: _nameController,
+            idNumberController: _idNumberController,
+            nationalityController: _nationalityController,
             addressController: _addressController,
             preferredRegions: _preferredRegions,
             regionInputController: _regionInputController,
@@ -1325,6 +1401,12 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
             onRemoveRegion: _removePreferredRegion,
             onMoveRegionUp: (index) => _movePreferredRegion(index, -1),
             onMoveRegionDown: (index) => _movePreferredRegion(index, 1),
+            gender: _gender,
+            onGenderChanged: (value) =>
+                setState(() => _gender = value ?? 'male'),
+            bankController: _bankController,
+            accountController: _accountController,
+            ownerController: _ownerController,
           ),
         );
     }

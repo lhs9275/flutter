@@ -38,6 +38,7 @@ class CwmpEmployerAppAdapter {
       'source': 'cwmp',
       'id': request.id.toString(),
       'siteId': request.siteId.toString(),
+      'jobPostId': request.jobPostId,
       'siteName': request.siteName,
       'date': request.workDate,
       'time': _formatTime(request.startTime),

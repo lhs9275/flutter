@@ -91,6 +91,22 @@ class CwmpApiRepository {
         .toList();
   }
 
+  Future<List<CwmpMatchSelectionResponse>> getMatchesForJobPost(
+    int jobPostId,
+  ) async {
+    final list = await _client.getJsonList(
+      '/api/matches/job-post/$jobPostId',
+      auth: true,
+    );
+    return list
+        .whereType<Map>()
+        .map(
+          (e) =>
+              CwmpMatchSelectionResponse.fromJson(Map<String, dynamic>.from(e)),
+        )
+        .toList();
+  }
+
   Future<List<CwmpConstructionSiteResponse>> getMyConstructionSites() async {
     final list = await _client.getJsonList('/api/sites/my', auth: true);
     return list
@@ -355,6 +371,90 @@ class CwmpApiRepository {
         .toList();
   }
 
+  Future<CwmpAttendanceCheckResponse> scanAttendance({
+    int? siteId,
+    String? siteName,
+    required int issuedAt,
+    required int expiresAt,
+    required String token,
+  }) async {
+    final body = <String, dynamic>{
+      'issuedAt': issuedAt,
+      'expiresAt': expiresAt,
+      'token': token.trim(),
+    };
+    if (siteId != null) body['siteId'] = siteId;
+    if ((siteName ?? '').trim().isNotEmpty) {
+      body['siteName'] = siteName!.trim();
+    }
+    final json = await _client.postJson(
+      '/api/attendance/scan',
+      auth: true,
+      body: body,
+    );
+    return CwmpAttendanceCheckResponse.fromJson(json);
+  }
+
+  Future<List<CwmpAttendanceCheckResponse>> getMyAttendance({
+    String? from,
+    String? to,
+  }) async {
+    final query = <String, dynamic>{};
+    if ((from ?? '').trim().isNotEmpty) query['from'] = from!.trim();
+    if ((to ?? '').trim().isNotEmpty) query['to'] = to!.trim();
+    final list = await _client.getJsonList(
+      '/api/attendance/my',
+      auth: true,
+      query: query.isEmpty ? null : query,
+    );
+    return list
+        .whereType<Map>()
+        .map(
+          (e) => CwmpAttendanceCheckResponse.fromJson(
+            Map<String, dynamic>.from(e),
+          ),
+        )
+        .toList();
+  }
+
+  Future<CwmpUserProfileResponse> getMyProfile() async {
+    final json = await _client.getJson('/api/users/me', auth: true);
+    return CwmpUserProfileResponse.fromJson(json);
+  }
+
+  Future<CwmpUserProfileResponse> updateMyProfile({
+    String? name,
+    String? gender,
+    String? nationality,
+    String? address,
+    String? idNumber,
+    String? bankName,
+    String? accountNumber,
+    String? accountHolder,
+  }) async {
+    final json = await _client.putJson(
+      '/api/users/me',
+      auth: true,
+      body: {
+        'name': (name ?? '').trim().isEmpty ? null : name!.trim(),
+        'gender': (gender ?? '').trim().isEmpty ? null : gender!.trim(),
+        'nationality': (nationality ?? '').trim().isEmpty
+            ? null
+            : nationality!.trim(),
+        'address': (address ?? '').trim().isEmpty ? null : address!.trim(),
+        'idNumber': (idNumber ?? '').trim().isEmpty ? null : idNumber!.trim(),
+        'bankName': (bankName ?? '').trim().isEmpty ? null : bankName!.trim(),
+        'accountNumber': (accountNumber ?? '').trim().isEmpty
+            ? null
+            : accountNumber!.trim(),
+        'accountHolder': (accountHolder ?? '').trim().isEmpty
+            ? null
+            : accountHolder!.trim(),
+      },
+    );
+    return CwmpUserProfileResponse.fromJson(json);
+  }
+
   Future<CwmpWorkRecordResponse> getWorkRecordForMatch(int matchId) async {
     final json = await _client.getJson(
       '/api/work-records/matches/$matchId',
@@ -514,6 +614,85 @@ class CwmpApiRepository {
   Future<CwmpNoShowSummaryResponse> getNoShowSummaryForUser(int userId) async {
     final json = await _client.getJson('/api/noshow/users/$userId', auth: true);
     return CwmpNoShowSummaryResponse.fromJson(json);
+  }
+
+  Future<List<CwmpAdminUserSummaryResponse>> getAdminUsers() async {
+    final list = await _client.getJsonList('/api/admin/users', auth: true);
+    return list
+        .whereType<Map>()
+        .map(
+          (e) => CwmpAdminUserSummaryResponse.fromJson(
+            Map<String, dynamic>.from(e),
+          ),
+        )
+        .toList();
+  }
+
+  Future<CwmpAdminUserDetailResponse> getAdminUserDetail(int userId) async {
+    final json = await _client.getJson('/api/admin/users/$userId', auth: true);
+    return CwmpAdminUserDetailResponse.fromJson(json);
+  }
+
+  Future<CwmpAdminUserDetailResponse> updateAdminUser({
+    required int userId,
+    String? name,
+    String? role,
+    int? perm,
+    bool? phoneVerified,
+  }) async {
+    final body = <String, dynamic>{};
+    if (name != null) body['name'] = name;
+    if ((role ?? '').trim().isNotEmpty) body['role'] = role!.trim();
+    if (perm != null) body['perm'] = perm;
+    if (phoneVerified != null) body['phoneVerified'] = phoneVerified;
+    final json = await _client.putJson(
+      '/api/admin/users/$userId',
+      auth: true,
+      body: body,
+    );
+    return CwmpAdminUserDetailResponse.fromJson(json);
+  }
+
+  Future<List<CwmpAdminPermissionTemplateResponse>>
+  getAdminPermissionTemplates() async {
+    final list = await _client.getJsonList(
+      '/api/admin/permissions',
+      auth: true,
+    );
+    return list
+        .whereType<Map>()
+        .map(
+          (e) => CwmpAdminPermissionTemplateResponse.fromJson(
+            Map<String, dynamic>.from(e),
+          ),
+        )
+        .toList();
+  }
+
+  Future<CwmpAdminPermissionUserResponse> getAdminPermissionUser(
+    int userId,
+  ) async {
+    final json = await _client.getJson(
+      '/api/admin/permissions/users/$userId',
+      auth: true,
+    );
+    return CwmpAdminPermissionUserResponse.fromJson(json);
+  }
+
+  Future<CwmpAdminPermissionUserResponse> updateAdminPermissionUser({
+    required int userId,
+    String? role,
+    int? perm,
+  }) async {
+    final body = <String, dynamic>{};
+    if ((role ?? '').trim().isNotEmpty) body['role'] = role!.trim();
+    if (perm != null) body['perm'] = perm;
+    final json = await _client.putJson(
+      '/api/admin/permissions/users/$userId',
+      auth: true,
+      body: body,
+    );
+    return CwmpAdminPermissionUserResponse.fromJson(json);
   }
 
   Future<CwmpWorkRecordResponse> settleWorkRecord(int recordId) async {

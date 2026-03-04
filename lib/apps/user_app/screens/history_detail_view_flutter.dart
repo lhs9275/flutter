@@ -27,6 +27,9 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
   String? _lastAttendanceSite;
   bool _confirmedThisSession = false;
   String? _attendanceErrorMessage;
+  bool _isAttendanceLoading = false;
+  String? _attendanceLoadError;
+  List<CwmpAttendanceCheckResponse> _attendanceRecords = const [];
   late final List<_HistoryItem> _items;
   bool _isRemoteLoading = false;
   String? _remoteError;
@@ -68,6 +71,7 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
       ),
     ];
     _loadRemoteWorkRecords();
+    _loadRemoteAttendance();
   }
 
   Future<void> _loadRemoteWorkRecords() async {
@@ -96,6 +100,69 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
     } finally {
       if (mounted) {
         setState(() => _isRemoteLoading = false);
+      }
+    }
+  }
+
+  Future<void> _loadRemoteAttendance({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _isAttendanceLoading = true;
+        _attendanceLoadError = null;
+      });
+    } else {
+      _isAttendanceLoading = true;
+      _attendanceLoadError = null;
+    }
+    try {
+      final records = await CwmpApiRepository.instance.getMyAttendance();
+      if (!mounted) return;
+      records.sort((a, b) {
+        final aAt = a.occurredAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bAt = b.occurredAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bAt.compareTo(aAt);
+      });
+      CwmpAttendanceCheckResponse? latest;
+      for (final record in records) {
+        if (record.occurredAt == null) continue;
+        if (latest == null) {
+          latest = record;
+          continue;
+        }
+        final currentAt = latest.occurredAt;
+        if (currentAt == null || record.occurredAt!.isAfter(currentAt)) {
+          latest = record;
+        }
+      }
+      if (latest != null) {
+        final latestRecord = latest;
+        setState(() {
+          _attendanceRecords = records;
+          _lastAttendanceAt = latestRecord.occurredAt;
+          _lastAttendanceSite = (latestRecord.siteName ?? '').trim().isEmpty
+              ? _lastAttendanceSite
+              : latestRecord.siteName;
+        });
+      } else if (!silent) {
+        setState(() {
+          _attendanceRecords = records;
+          _lastAttendanceAt = null;
+          _lastAttendanceSite = null;
+        });
+      }
+    } on CwmpApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode != 401 && e.statusCode != 404) {
+        setState(() => _attendanceLoadError = e.message);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _attendanceLoadError = '출근 기록을 불러오지 못했습니다: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isAttendanceLoading = false);
+      } else {
+        _isAttendanceLoading = false;
       }
     }
   }
@@ -248,6 +315,8 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildAttendanceCard(context),
+              const SizedBox(height: 12),
+              _buildAttendanceHistorySection(),
               const SizedBox(height: 16),
               _buildFilterBar(),
               const SizedBox(height: 12),
@@ -416,10 +485,39 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
             '현장 담당자가 제공한 QR을 스캔하면 출근 확인이 완료됩니다.',
             style: TextStyle(color: Color(0xFF64748B)),
           ),
+          if (_attendanceLoadError != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _attendanceLoadError!,
+              style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 12),
+            ),
+          ],
           const SizedBox(height: 10),
-          Text(
-            lastChecked,
-            style: const TextStyle(color: Color(0xFF475569), fontSize: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  lastChecked,
+                  style: const TextStyle(
+                    color: Color(0xFF475569),
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: '출근 기록 새로고침',
+                onPressed: _isAttendanceLoading
+                    ? null
+                    : () => _loadRemoteAttendance(),
+                icon: _isAttendanceLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 18),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           SizedBox(
@@ -434,13 +532,143 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
     );
   }
 
+  Widget _buildAttendanceHistorySection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFFFF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '최근 출근 기록',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          if (_attendanceRecords.isEmpty)
+            const Text(
+              '저장된 출근 기록이 없습니다.',
+              style: TextStyle(color: Color(0xFF94A3B8)),
+            )
+          else ...[
+            const Text(
+              '실서버 출근확인 기준',
+              style: TextStyle(color: Color(0xFF2563EB), fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            ..._attendanceRecords
+                .take(5)
+                .map(
+                  (record) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          margin: const EdgeInsets.only(top: 6),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF2563EB),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                (record.siteName ?? '').trim().isEmpty
+                                    ? '현장 #${record.siteId ?? '-'}'
+                                    : record.siteName!.trim(),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                record.occurredAt == null
+                                    ? '근무일 ${record.workDate}'
+                                    : '출근 ${_formatDate(record.occurredAt!)} ${formatTime(record.occurredAt!)}',
+                                style: const TextStyle(
+                                  color: Color(0xFF475569),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              if (record.jobPostId != null) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  '공고 #${record.jobPostId}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF64748B),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (record.alreadyCheckedIn)
+                          const Text(
+                            '확인됨',
+                            style: TextStyle(
+                              color: Color(0xFF166534),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Future<void> _openAttendanceScanner(BuildContext context) async {
     _confirmedThisSession = false;
     _attendanceErrorMessage = null;
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AttendanceScanSheetFlutter(
-          onConfirmed: (payload) {
+          onConfirmed: (payload) async {
+            final parsedSiteId = int.tryParse((payload.siteId ?? '').trim());
+            try {
+              final scanned = await CwmpApiRepository.instance.scanAttendance(
+                siteId: parsedSiteId,
+                siteName: payload.siteName,
+                issuedAt: payload.issuedAt,
+                expiresAt: payload.expiresAt,
+                token: payload.token,
+              );
+              _confirmedThisSession = true;
+              if (!mounted) return;
+              setState(() {
+                _lastAttendanceAt = scanned.occurredAt ?? DateTime.now();
+                _lastAttendanceSite = (scanned.siteName ?? '').trim().isEmpty
+                    ? payload.siteName
+                    : scanned.siteName;
+              });
+              _loadRemoteAttendance(silent: true);
+              return;
+            } on CwmpApiException catch (e) {
+              if (e.statusCode != 401) {
+                _attendanceErrorMessage = e.message;
+                return;
+              }
+              // Standalone/mock preview fallback when no CWMP session exists.
+            } catch (e) {
+              _attendanceErrorMessage = '출근 확인 중 오류가 발생했습니다: $e';
+              return;
+            }
+
             final saved = MockBackend.markAttendance(
               siteId: payload.siteId ?? '',
               siteName: payload.siteName,
@@ -452,6 +680,7 @@ class _HistoryDetailViewFlutterState extends State<HistoryDetailViewFlutter> {
               return;
             }
             _confirmedThisSession = true;
+            if (!mounted) return;
             setState(() {
               _lastAttendanceAt = DateTime.now();
               _lastAttendanceSite =

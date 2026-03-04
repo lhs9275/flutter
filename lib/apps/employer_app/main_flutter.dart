@@ -70,6 +70,15 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
   List<Map<String, dynamic>> _remoteJobRequests = const [];
   List<CwmpNotificationResponse> _remoteNotices = const [];
   bool _remoteNoticesLoadedFromUserEndpoint = false;
+  final Map<int, List<CwmpMatchSelectionResponse>> _remoteMatchesByJobPost = {};
+  final Set<int> _remoteMatchesLoadingJobPostIds = <int>{};
+  final Map<int, List<CwmpWorkRecordResponse>> _remoteWorkRecordsByJobPost = {};
+  final Set<int> _remoteWorkRecordsLoadingJobPostIds = <int>{};
+  final Map<int, String> _remoteMatchErrorsByJobPost = {};
+  final Map<int, String> _remoteWorkRecordErrorsByJobPost = {};
+  final Map<int, CwmpNoShowSummaryResponse> _remoteNoShowSummaryByUserId = {};
+  final Set<int> _remoteNoShowLoadingUserIds = <int>{};
+  final Map<int, String> _remoteNoShowErrorsByUserId = {};
   final Map<int, CwmpSiteNavigationLinksResponse> _remoteNavLinksBySiteId = {};
   final Set<int> _remoteNavLinksLoadingSiteIds = <int>{};
 
@@ -266,6 +275,28 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
             .toList();
         _remoteNotices = notices;
         _remoteNoticesLoadedFromUserEndpoint = noticesFromUserEndpoint;
+        final validJobPostIds = jobs
+            .map((e) => e.jobPostId)
+            .whereType<int>()
+            .toSet();
+        _remoteMatchesByJobPost.removeWhere(
+          (jobPostId, _) => !validJobPostIds.contains(jobPostId),
+        );
+        _remoteMatchErrorsByJobPost.removeWhere(
+          (jobPostId, _) => !validJobPostIds.contains(jobPostId),
+        );
+        _remoteMatchesLoadingJobPostIds.removeWhere(
+          (jobPostId) => !validJobPostIds.contains(jobPostId),
+        );
+        _remoteWorkRecordsByJobPost.removeWhere(
+          (jobPostId, _) => !validJobPostIds.contains(jobPostId),
+        );
+        _remoteWorkRecordErrorsByJobPost.removeWhere(
+          (jobPostId, _) => !validJobPostIds.contains(jobPostId),
+        );
+        _remoteWorkRecordsLoadingJobPostIds.removeWhere(
+          (jobPostId) => !validJobPostIds.contains(jobPostId),
+        );
         final validSiteIds = sites.map((e) => e.id).toSet();
         _remoteNavLinksBySiteId.removeWhere(
           (key, _) => !validSiteIds.contains(key),
@@ -283,6 +314,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
       }
       if (_view == EmployerView.jobRequest) {
         _prefetchNavigationLinksForSelectedSite();
+        _prefetchRemoteEmployerOperationalData();
       }
     } on CwmpApiException catch (e) {
       if (!mounted) return;
@@ -310,6 +342,15 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
       _remoteJobRequests = const [];
       _remoteNotices = const [];
       _remoteNoticesLoadedFromUserEndpoint = false;
+      _remoteMatchesByJobPost.clear();
+      _remoteMatchesLoadingJobPostIds.clear();
+      _remoteWorkRecordsByJobPost.clear();
+      _remoteWorkRecordsLoadingJobPostIds.clear();
+      _remoteMatchErrorsByJobPost.clear();
+      _remoteWorkRecordErrorsByJobPost.clear();
+      _remoteNoShowSummaryByUserId.clear();
+      _remoteNoShowLoadingUserIds.clear();
+      _remoteNoShowErrorsByUserId.clear();
       _remoteNavLinksBySiteId.clear();
       _remoteNavLinksLoadingSiteIds.clear();
       _remoteLoadError = null;
@@ -364,6 +405,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     _persistEmployerUiState();
     if (view == EmployerView.jobRequest) {
       _prefetchNavigationLinksForSelectedSite();
+      _prefetchRemoteEmployerOperationalData();
     }
   }
 
@@ -374,6 +416,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     });
     _persistEmployerUiState();
     _prefetchNavigationLinksForSelectedSite();
+    _prefetchRemoteEmployerOperationalData();
   }
 
   void _setShowNoShowOnly(bool value) {
@@ -398,6 +441,379 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     _loadNavigationLinksForSite(context, site, silent: true);
   }
 
+  int? _remoteJobPostIdFromJob(Map<String, dynamic> job) {
+    final raw = job['jobPostId'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '');
+  }
+
+  Future<void> _prefetchRemoteEmployerOperationalData() async {
+    if (!_hasRemoteSession) return;
+    final sites = _sites;
+    if (sites.isEmpty) return;
+    final safeIndex = _selectedSiteIndex >= sites.length
+        ? 0
+        : _selectedSiteIndex;
+    final selectedSiteId = sites[safeIndex]['id']?.toString() ?? '';
+    if (selectedSiteId.isEmpty) return;
+    final jobs = _jobRequestsForSite(selectedSiteId);
+    for (final job in jobs) {
+      final jobPostId = _remoteJobPostIdFromJob(job);
+      if (jobPostId == null || jobPostId <= 0) continue;
+      if (!_remoteMatchesByJobPost.containsKey(jobPostId)) {
+        _loadRemoteMatchesForJobPost(jobPostId, silent: true);
+      }
+      if (!_remoteWorkRecordsByJobPost.containsKey(jobPostId)) {
+        _loadRemoteWorkRecordsForJobPost(jobPostId, silent: true);
+      }
+    }
+  }
+
+  Future<void> _loadRemoteMatchesForJobPost(
+    int jobPostId, {
+    bool silent = false,
+  }) async {
+    if (!_hasRemoteSession || jobPostId <= 0) return;
+    if (_remoteMatchesLoadingJobPostIds.contains(jobPostId)) return;
+    setState(() {
+      _remoteMatchesLoadingJobPostIds.add(jobPostId);
+      _remoteMatchErrorsByJobPost.remove(jobPostId);
+    });
+    try {
+      final matches = await CwmpApiRepository.instance.getMatchesForJobPost(
+        jobPostId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _remoteMatchesByJobPost[jobPostId] = matches;
+        _remoteMatchErrorsByJobPost.remove(jobPostId);
+      });
+      for (final match in matches) {
+        if (match.workerId > 0 &&
+            !_remoteNoShowSummaryByUserId.containsKey(match.workerId)) {
+          _loadRemoteNoShowSummary(match.workerId, silent: true);
+        }
+      }
+    } on CwmpApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 401) {
+        await _handleSessionExpired(showMessage: false);
+        return;
+      }
+      setState(() => _remoteMatchErrorsByJobPost[jobPostId] = e.message);
+      if (!silent) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('지원자 목록 조회 실패: ${e.message}')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _remoteMatchErrorsByJobPost[jobPostId] = '$e');
+      if (!silent) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('지원자 목록 조회 중 오류: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _remoteMatchesLoadingJobPostIds.remove(jobPostId));
+      }
+    }
+  }
+
+  Future<void> _loadRemoteWorkRecordsForJobPost(
+    int jobPostId, {
+    bool silent = false,
+  }) async {
+    if (!_hasRemoteSession || jobPostId <= 0) return;
+    if (_remoteWorkRecordsLoadingJobPostIds.contains(jobPostId)) return;
+    setState(() {
+      _remoteWorkRecordsLoadingJobPostIds.add(jobPostId);
+      _remoteWorkRecordErrorsByJobPost.remove(jobPostId);
+    });
+    try {
+      final records = await CwmpApiRepository.instance.getWorkRecordsForJobPost(
+        jobPostId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _remoteWorkRecordsByJobPost[jobPostId] = records;
+        _remoteWorkRecordErrorsByJobPost.remove(jobPostId);
+      });
+      for (final record in records) {
+        if (record.workerId > 0 &&
+            !_remoteNoShowSummaryByUserId.containsKey(record.workerId)) {
+          _loadRemoteNoShowSummary(record.workerId, silent: true);
+        }
+      }
+    } on CwmpApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 401) {
+        await _handleSessionExpired(showMessage: false);
+        return;
+      }
+      setState(() => _remoteWorkRecordErrorsByJobPost[jobPostId] = e.message);
+      if (!silent) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('근무기록 조회 실패: ${e.message}')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _remoteWorkRecordErrorsByJobPost[jobPostId] = '$e');
+      if (!silent) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('근무기록 조회 중 오류: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _remoteWorkRecordsLoadingJobPostIds.remove(jobPostId));
+      }
+    }
+  }
+
+  Future<void> _loadRemoteNoShowSummary(
+    int userId, {
+    bool silent = false,
+  }) async {
+    if (!_hasRemoteSession || userId <= 0) return;
+    if (_remoteNoShowLoadingUserIds.contains(userId)) return;
+    if (_remoteNoShowSummaryByUserId.containsKey(userId)) return;
+    setState(() {
+      _remoteNoShowLoadingUserIds.add(userId);
+      _remoteNoShowErrorsByUserId.remove(userId);
+    });
+    try {
+      final summary = await CwmpApiRepository.instance.getNoShowSummaryForUser(
+        userId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _remoteNoShowSummaryByUserId[userId] = summary;
+        _remoteNoShowErrorsByUserId.remove(userId);
+      });
+    } on CwmpApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 401) {
+        await _handleSessionExpired(showMessage: false);
+        return;
+      }
+      setState(() => _remoteNoShowErrorsByUserId[userId] = e.message);
+      if (!silent) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('노쇼 요약 조회 실패: ${e.message}')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _remoteNoShowErrorsByUserId[userId] = '$e');
+      if (!silent) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('노쇼 요약 조회 중 오류: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _remoteNoShowLoadingUserIds.remove(userId));
+      }
+    }
+  }
+
+  List<CwmpMatchSelectionResponse> _remoteMatchesForJob(
+    Map<String, dynamic> job,
+  ) {
+    final jobPostId = _remoteJobPostIdFromJob(job);
+    if (jobPostId == null || jobPostId <= 0) return const [];
+    return _remoteMatchesByJobPost[jobPostId] ?? const [];
+  }
+
+  String? _remoteMatchErrorForJob(Map<String, dynamic> job) {
+    final jobPostId = _remoteJobPostIdFromJob(job);
+    if (jobPostId == null || jobPostId <= 0) return null;
+    final error = (_remoteMatchErrorsByJobPost[jobPostId] ?? '').trim();
+    return error.isEmpty ? null : error;
+  }
+
+  List<CwmpMatchSelectionResponse> _remoteConfirmedMatchesForJob(
+    Map<String, dynamic> job,
+  ) {
+    return _remoteMatchesForJob(
+      job,
+    ).where((m) => m.status.trim().toUpperCase() == 'CONFIRMED').toList();
+  }
+
+  List<CwmpWorkRecordResponse> _remoteWorkRecordsForJob(
+    Map<String, dynamic> job,
+  ) {
+    final jobPostId = _remoteJobPostIdFromJob(job);
+    if (jobPostId == null || jobPostId <= 0) return const [];
+    return _remoteWorkRecordsByJobPost[jobPostId] ?? const [];
+  }
+
+  String? _remoteWorkRecordErrorForJob(Map<String, dynamic> job) {
+    final jobPostId = _remoteJobPostIdFromJob(job);
+    if (jobPostId == null || jobPostId <= 0) return null;
+    final error = (_remoteWorkRecordErrorsByJobPost[jobPostId] ?? '').trim();
+    return error.isEmpty ? null : error;
+  }
+
+  String? _remoteNoShowErrorForUser(int userId) {
+    final error = (_remoteNoShowErrorsByUserId[userId] ?? '').trim();
+    return error.isEmpty ? null : error;
+  }
+
+  CwmpWorkRecordResponse? _remoteWorkRecordForMatch(
+    Map<String, dynamic> job,
+    int matchId,
+  ) {
+    if (matchId <= 0) return null;
+    for (final record in _remoteWorkRecordsForJob(job)) {
+      if (record.matchId == matchId) return record;
+    }
+    return null;
+  }
+
+  Future<void> _openRemoteWorkRecordDialog(
+    BuildContext context, {
+    required Map<String, dynamic> job,
+    required CwmpMatchSelectionResponse match,
+  }) async {
+    final existing = _remoteWorkRecordForMatch(job, match.id);
+    final workUnitsController = TextEditingController(
+      text: existing?.workUnits.toString() ?? '1',
+    );
+    final ratingController = TextEditingController(
+      text: existing?.rating?.toString() ?? '',
+    );
+    final noteController = TextEditingController(
+      text: existing?.evaluationNote ?? '',
+    );
+    try {
+      final saved = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: Text('근무기록 ${existing == null ? '입력' : '수정'}'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'match #${match.id} · worker #${match.workerId}',
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: workUnitsController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: '공수 *',
+                      hintText: '예: 1.0',
+                      filled: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: ratingController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: '평점 (1~5, 선택)',
+                      filled: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: noteController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: '평가 메모 (선택)',
+                      filled: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('취소'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final workUnits = num.tryParse(
+                    workUnitsController.text.trim(),
+                  );
+                  final ratingText = ratingController.text.trim();
+                  final rating = ratingText.isEmpty
+                      ? null
+                      : int.tryParse(ratingText);
+                  if (workUnits == null || workUnits < 0) {
+                    ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      const SnackBar(content: Text('공수를 올바르게 입력해주세요.')),
+                    );
+                    return;
+                  }
+                  if (ratingText.isNotEmpty &&
+                      (rating == null || rating < 1 || rating > 5)) {
+                    ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      const SnackBar(content: Text('평점은 1~5 사이로 입력해주세요.')),
+                    );
+                    return;
+                  }
+                  try {
+                    await CwmpApiRepository.instance.upsertWorkRecordForMatch(
+                      matchId: match.id,
+                      workUnits: workUnits,
+                      rating: rating,
+                      evaluationNote: noteController.text.trim(),
+                    );
+                    final jobPostId = _remoteJobPostIdFromJob(job);
+                    if (jobPostId != null) {
+                      await _loadRemoteWorkRecordsForJobPost(
+                        jobPostId,
+                        silent: true,
+                      );
+                    }
+                    if (!dialogContext.mounted) return;
+                    Navigator.of(dialogContext).pop(true);
+                  } on CwmpApiException catch (e) {
+                    if (!dialogContext.mounted) return;
+                    ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      SnackBar(content: Text('근무기록 저장 실패: ${e.message}')),
+                    );
+                  } catch (e) {
+                    if (!dialogContext.mounted) return;
+                    ScaffoldMessenger.of(
+                      dialogContext,
+                    ).showSnackBar(SnackBar(content: Text('근무기록 저장 중 오류: $e')));
+                  }
+                },
+                child: const Text('저장'),
+              ),
+            ],
+          );
+        },
+      );
+      if (saved == true && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('근무기록이 저장되었습니다.')));
+      }
+    } finally {
+      workUnitsController.dispose();
+      ratingController.dispose();
+      noteController.dispose();
+    }
+  }
+
   Future<void> _logout() async {
     await CwmpSessionStore.clear();
     if (!mounted) return;
@@ -407,6 +823,15 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
       _remoteJobRequests = const [];
       _remoteNotices = const [];
       _remoteNoticesLoadedFromUserEndpoint = false;
+      _remoteMatchesByJobPost.clear();
+      _remoteMatchesLoadingJobPostIds.clear();
+      _remoteWorkRecordsByJobPost.clear();
+      _remoteWorkRecordsLoadingJobPostIds.clear();
+      _remoteMatchErrorsByJobPost.clear();
+      _remoteWorkRecordErrorsByJobPost.clear();
+      _remoteNoShowSummaryByUserId.clear();
+      _remoteNoShowLoadingUserIds.clear();
+      _remoteNoShowErrorsByUserId.clear();
       _remoteNavLinksBySiteId.clear();
       _remoteNavLinksLoadingSiteIds.clear();
       _remoteLoadError = null;
@@ -1331,31 +1756,10 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
             title: '오늘 일한 근로자',
             children: [
               if (_hasRemoteSession) ...[
-                Text(
-                  '근무일 $todayLabel',
-                  style: const TextStyle(color: Color(0xFF64748B)),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  '실서버 연동 대기: 구인자가 자신의 공고에 확정된 매칭(matchId) 목록을 조회하는 API가 없어 근무기록 입력 대상을 구성할 수 없습니다.',
-                  style: TextStyle(color: Color(0xFF475569)),
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFFBEB),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFFDE68A)),
-                  ),
-                  child: const Text(
-                    '확인된 사항\n'
-                    '• 사용 가능: POST /api/work-records/matches/{matchId}\n'
-                    '• 필요(미노출): 구인자용 공고별 매칭/확정자 조회 (matchId 포함)\n'
-                    '• 추가로 있으면 좋음: jobRequest 응답에 jobPostId',
-                    style: TextStyle(color: Color(0xFF92400E), fontSize: 12),
-                  ),
+                ..._buildRemoteTodayWorkersSection(
+                  context,
+                  site,
+                  todayLabel: todayLabel,
                 ),
               ] else ...[
                 Text(
@@ -1437,6 +1841,21 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                 final applicants = isRemoteJob
                     ? const <Map<String, dynamic>>[]
                     : MockBackend.applicantsForJob(job['id'] as String);
+                final remoteMatches = isRemoteJob
+                    ? _remoteMatchesForJob(job)
+                    : const <CwmpMatchSelectionResponse>[];
+                final remoteConfirmedMatches = isRemoteJob
+                    ? _remoteConfirmedMatchesForJob(job)
+                    : const <CwmpMatchSelectionResponse>[];
+                final remoteMatchError = isRemoteJob
+                    ? _remoteMatchErrorForJob(job)
+                    : null;
+                final remoteWorkRecordError = isRemoteJob
+                    ? _remoteWorkRecordErrorForJob(job)
+                    : null;
+                final remoteJobPostId = isRemoteJob
+                    ? _remoteJobPostIdFromJob(job)
+                    : null;
                 final confirmedApplicants = applicants
                     .where(
                       (applicant) =>
@@ -1490,23 +1909,119 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
                       ],
                       const SizedBox(height: 10),
                       if (isRemoteJob)
-                        Container(
-                          width: double.infinity,
-                          margin: const EdgeInsets.only(top: 2),
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFFBEB),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFFDE68A)),
-                          ),
-                          child: const Text(
-                            '실서버 연동 대기: 구인자용 지원자/배정 인력 조회 API가 없어 목록을 가져올 수 없습니다.\n'
-                            '필요 항목: jobRequest -> jobPostId 연결값, 공고별 매칭(지원자/확정자) 조회 endpoint.',
-                            style: TextStyle(
-                              color: Color(0xFF92400E),
-                              fontSize: 12,
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '지원 ${remoteMatches.length}명 · 확정 ${remoteConfirmedMatches.length}명'
+                              '${remoteJobPostId == null ? '' : ' · 공고#$remoteJobPostId'}',
+                              style: const TextStyle(color: Color(0xFF64748B)),
                             ),
-                          ),
+                            const SizedBox(height: 8),
+                            if (remoteMatchError != null) ...[
+                              Text(
+                                '지원자 조회 오류: $remoteMatchError',
+                                style: const TextStyle(
+                                  color: Color(0xFFB91C1C),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                            if (remoteWorkRecordError != null) ...[
+                              Text(
+                                '근무기록 조회 오류: $remoteWorkRecordError',
+                                style: const TextStyle(
+                                  color: Color(0xFFB91C1C),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: remoteJobPostId == null
+                                      ? null
+                                      : () => _loadRemoteMatchesForJobPost(
+                                          remoteJobPostId,
+                                        ),
+                                  icon:
+                                      _remoteMatchesLoadingJobPostIds.contains(
+                                        remoteJobPostId ?? -1,
+                                      )
+                                      ? const SizedBox(
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.people_outline,
+                                          size: 16,
+                                        ),
+                                  label: Text(
+                                    remoteMatches.isEmpty
+                                        ? '지원자 불러오기'
+                                        : '지원자 새로고침',
+                                  ),
+                                ),
+                                if (remoteJobPostId == null)
+                                  const Chip(
+                                    label: Text('jobPostId 없음'),
+                                    backgroundColor: Color(0xFFFFF7ED),
+                                  ),
+                              ],
+                            ),
+                            if (remoteMatches.isEmpty &&
+                                !_remoteMatchesLoadingJobPostIds.contains(
+                                  remoteJobPostId ?? -1,
+                                ))
+                              const Padding(
+                                padding: EdgeInsets.only(top: 6),
+                                child: Text(
+                                  '지원자가 없거나 아직 매칭 목록을 조회하지 않았습니다.',
+                                  style: TextStyle(
+                                    color: Color(0xFF94A3B8),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              )
+                            else if (remoteMatches.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: remoteMatches.map((match) {
+                                  final status = match.status
+                                      .trim()
+                                      .toUpperCase();
+                                  final isConfirmed = status == 'CONFIRMED';
+                                  final isPreferred = status == 'PREFERRED';
+                                  final chipColor = isConfirmed
+                                      ? const Color(0xFFDCFCE7)
+                                      : isPreferred
+                                      ? const Color(0xFFE0E7FF)
+                                      : const Color(0xFFF1F5F9);
+                                  final textColor = isConfirmed
+                                      ? const Color(0xFF166534)
+                                      : isPreferred
+                                      ? const Color(0xFF3730A3)
+                                      : const Color(0xFF475569);
+                                  return Chip(
+                                    label: Text(
+                                      '근로자#${match.workerId} · ${match.status}',
+                                    ),
+                                    backgroundColor: chipColor,
+                                    labelStyle: TextStyle(color: textColor),
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ],
                         )
                       else
                         Text(
@@ -1592,25 +2107,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
             title: '배정 인력',
             children: [
               if (_hasRemoteSession) ...[
-                const Text(
-                  '실서버 연동 대기: 구인자용 배정 인력/노쇼 대상 조회 API가 필요합니다.',
-                  style: TextStyle(color: Color(0xFF475569)),
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: const Text(
-                    '현재 노쇼 조회(/api/noshow/users/{userId})는 userId를 알아야 호출할 수 있습니다.\n'
-                    '구인자 화면에서 userId 목록을 얻으려면 공고별 매칭/확정자 조회 endpoint가 먼저 필요합니다.',
-                    style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
-                  ),
-                ),
+                ..._buildRemoteAssignedWorkersSection(context, site),
               ] else ...[
                 Wrap(
                   spacing: 8,
@@ -2044,6 +2541,354 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     ).showSnackBar(const SnackBar(content: Text('노쇼 횟수가 초기화되었습니다.')));
   }
 
+  List<Map<String, dynamic>> _remoteOperationalJobsForSite(String siteId) {
+    return _jobRequestsForSite(siteId)
+        .where((job) => (job['source']?.toString() ?? '') == 'cwmp')
+        .where((job) => _remoteJobPostIdFromJob(job) != null)
+        .toList();
+  }
+
+  List<CwmpMatchSelectionResponse> _remoteConfirmedMatchesForSite(
+    String siteId,
+  ) {
+    final out = <CwmpMatchSelectionResponse>[];
+    for (final job in _remoteOperationalJobsForSite(siteId)) {
+      out.addAll(_remoteConfirmedMatchesForJob(job));
+    }
+    final seen = <int>{};
+    return out.where((m) => seen.add(m.id)).toList();
+  }
+
+  List<Widget> _buildRemoteTodayWorkersSection(
+    BuildContext context,
+    Map<String, dynamic> site, {
+    required String todayLabel,
+  }) {
+    final siteId = site['id']?.toString() ?? '';
+    final jobs = _remoteOperationalJobsForSite(
+      siteId,
+    ).where((job) => (job['date']?.toString() ?? '') == todayLabel).toList();
+    final hasLoading = jobs.any((job) {
+      final jobPostId = _remoteJobPostIdFromJob(job);
+      if (jobPostId == null) return false;
+      return _remoteMatchesLoadingJobPostIds.contains(jobPostId) ||
+          _remoteWorkRecordsLoadingJobPostIds.contains(jobPostId);
+    });
+    final sectionWarnings = jobs
+        .expand(
+          (job) => [
+            _remoteMatchErrorForJob(job),
+            _remoteWorkRecordErrorForJob(job),
+          ],
+        )
+        .whereType<String>()
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+
+    final cards = <Widget>[
+      Text('근무일 $todayLabel', style: const TextStyle(color: Color(0xFF64748B))),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton.icon(
+            onPressed: hasLoading
+                ? null
+                : () {
+                    for (final job in jobs) {
+                      final jobPostId = _remoteJobPostIdFromJob(job);
+                      if (jobPostId == null) continue;
+                      _loadRemoteMatchesForJobPost(jobPostId);
+                      _loadRemoteWorkRecordsForJobPost(jobPostId);
+                    }
+                  },
+            icon: hasLoading
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh, size: 16),
+            label: const Text('오늘 인력/근무기록 새로고침'),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      if (sectionWarnings.isNotEmpty) ...[
+        for (final warning in sectionWarnings)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              '• $warning',
+              style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 12),
+            ),
+          ),
+        const SizedBox(height: 6),
+      ],
+    ];
+
+    if (jobs.isEmpty) {
+      cards.add(
+        const Text(
+          '오늘 날짜로 등록된 공고 요청(발행됨)이 없습니다.',
+          style: TextStyle(color: Color(0xFF94A3B8)),
+        ),
+      );
+      return cards;
+    }
+
+    final rows = <Map<String, dynamic>>[];
+    for (final job in jobs) {
+      final workRecords = _remoteWorkRecordsForJob(job);
+      for (final match in _remoteConfirmedMatchesForJob(job)) {
+        CwmpWorkRecordResponse? matchedRecord;
+        for (final record in workRecords) {
+          if (record.matchId == match.id) {
+            matchedRecord = record;
+            break;
+          }
+        }
+        rows.add({'job': job, 'match': match, 'record': matchedRecord});
+      }
+    }
+
+    if (rows.isEmpty) {
+      cards.add(
+        const Text(
+          '확정된 근로자가 없습니다.',
+          style: TextStyle(color: Color(0xFF94A3B8)),
+        ),
+      );
+      return cards;
+    }
+
+    for (final row in rows) {
+      final job = row['job'] as Map<String, dynamic>;
+      final match = row['match'] as CwmpMatchSelectionResponse;
+      final record = row['record'] as CwmpWorkRecordResponse?;
+      final statusLabel = record == null ? '근무기록 없음' : '기록 저장됨';
+      final statusColor = record == null
+          ? const Color(0xFF92400E)
+          : const Color(0xFF166534);
+      cards.add(
+        Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '근로자 #${match.workerId} · ${job['jobType'] ?? '-'}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Text(
+                    statusLabel,
+                    style: TextStyle(color: statusColor, fontSize: 12),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '매칭 #${match.id} · 공고 #${match.jobPostId}',
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+              ),
+              if (record != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '공수 ${record.workUnits} · 평점 ${record.rating ?? '-'} · 상태 ${record.status}',
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: ElevatedButton(
+                  onPressed: () => _openRemoteWorkRecordDialog(
+                    context,
+                    job: job,
+                    match: match,
+                  ),
+                  child: Text(record == null ? '근무기록 입력' : '근무기록 수정'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return cards;
+  }
+
+  List<Widget> _buildRemoteAssignedWorkersSection(
+    BuildContext context,
+    Map<String, dynamic> site,
+  ) {
+    final siteId = site['id']?.toString() ?? '';
+    final confirmed = _remoteConfirmedMatchesForSite(siteId);
+    final filtered = _showNoShowOnly
+        ? confirmed.where((m) {
+            final count = _remoteNoShowSummaryByUserId[m.workerId]?.count ?? 0;
+            return count > 0;
+          }).toList()
+        : confirmed;
+    final sectionWarnings = confirmed
+        .map((m) => _remoteNoShowErrorForUser(m.workerId))
+        .whereType<String>()
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+
+    final widgets = <Widget>[
+      Wrap(
+        spacing: 8,
+        children: [
+          ChoiceChip(
+            label: const Text('전체'),
+            selected: !_showNoShowOnly,
+            onSelected: (_) => _setShowNoShowOnly(false),
+            selectedColor: const Color(0xFFDBEAFE),
+            labelStyle: TextStyle(
+              color: !_showNoShowOnly
+                  ? const Color(0xFF1D4ED8)
+                  : const Color(0xFF475569),
+            ),
+          ),
+          ChoiceChip(
+            label: const Text('노쇼 있음'),
+            selected: _showNoShowOnly,
+            onSelected: (_) => _setShowNoShowOnly(true),
+            selectedColor: const Color(0xFFFEE2E2),
+            labelStyle: TextStyle(
+              color: _showNoShowOnly
+                  ? const Color(0xFFB91C1C)
+                  : const Color(0xFF475569),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      Align(
+        alignment: Alignment.centerRight,
+        child: OutlinedButton.icon(
+          onPressed: () {
+            for (final match in confirmed) {
+              _loadRemoteNoShowSummary(match.workerId);
+            }
+          },
+          icon: const Icon(Icons.refresh, size: 16),
+          label: const Text('노쇼 요약 새로고침'),
+        ),
+      ),
+      const SizedBox(height: 8),
+      if (sectionWarnings.isNotEmpty) ...[
+        for (final warning in sectionWarnings)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              '• $warning',
+              style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 12),
+            ),
+          ),
+        const SizedBox(height: 6),
+      ],
+    ];
+
+    if (filtered.isEmpty) {
+      widgets.add(
+        Text(
+          _showNoShowOnly ? '노쇼 인력이 없습니다.' : '확정된 배정 인력이 없습니다.',
+          style: const TextStyle(color: Color(0xFF94A3B8)),
+        ),
+      );
+      return widgets;
+    }
+
+    for (final match in filtered) {
+      final noShow = _remoteNoShowSummaryByUserId[match.workerId];
+      final isNoShowLoading = _remoteNoShowLoadingUserIds.contains(
+        match.workerId,
+      );
+      widgets.add(
+        Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '근로자 #${match.workerId}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '매칭 #${match.id} · 공고 #${match.jobPostId}',
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      noShow == null
+                          ? (isNoShowLoading ? '노쇼 요약 조회 중...' : '노쇼 요약 미조회')
+                          : '노쇼 ${noShow.count}회'
+                                '${noShow.latestOccurredAt == null ? '' : ' · 최근 ${_formatDateTime(noShow.latestOccurredAt!)}'}',
+                      style: TextStyle(
+                        color: (noShow?.count ?? 0) > 0
+                            ? const Color(0xFFB91C1C)
+                            : const Color(0xFF475569),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: '노쇼 요약 조회',
+                onPressed: isNoShowLoading
+                    ? null
+                    : () => _loadRemoteNoShowSummary(match.workerId),
+                icon: isNoShowLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 18),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return widgets;
+  }
+
   Widget _buildTodayWorkerCard(Map<String, dynamic> worker) {
     final approved = worker['approved'] == true;
     final selectedLabor = worker['labor'] as String? ?? '1.0';
@@ -2263,6 +3108,10 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
 
   String _formatDate(DateTime date) {
     return '${date.year}-${_twoDigits(date.month)}-${_twoDigits(date.day)}';
+  }
+
+  String _formatDateTime(DateTime value) {
+    return '${_formatDate(value)} ${_twoDigits(value.hour)}:${_twoDigits(value.minute)}';
   }
 
   String _twoDigits(int value) => value.toString().padLeft(2, '0');

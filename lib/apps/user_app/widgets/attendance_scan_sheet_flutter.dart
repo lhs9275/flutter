@@ -4,18 +4,17 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../../widgets/attendance_qr_helper.dart';
 
 class AttendanceScanSheetFlutter extends StatefulWidget {
-  const AttendanceScanSheetFlutter({
-    super.key,
-    required this.onConfirmed,
-  });
+  const AttendanceScanSheetFlutter({super.key, required this.onConfirmed});
 
-  final ValueChanged<AttendanceQrPayload> onConfirmed;
+  final Future<void> Function(AttendanceQrPayload) onConfirmed;
 
   @override
-  State<AttendanceScanSheetFlutter> createState() => _AttendanceScanSheetFlutterState();
+  State<AttendanceScanSheetFlutter> createState() =>
+      _AttendanceScanSheetFlutterState();
 }
 
-class _AttendanceScanSheetFlutterState extends State<AttendanceScanSheetFlutter> {
+class _AttendanceScanSheetFlutterState
+    extends State<AttendanceScanSheetFlutter> {
   final MobileScannerController _controller = MobileScannerController();
   bool _isHandling = false;
 
@@ -27,7 +26,9 @@ class _AttendanceScanSheetFlutterState extends State<AttendanceScanSheetFlutter>
 
   Future<void> _handleBarcode(BarcodeCapture capture) async {
     if (_isHandling) return;
-    final raw = capture.barcodes.isEmpty ? null : capture.barcodes.first.rawValue;
+    final raw = capture.barcodes.isEmpty
+        ? null
+        : capture.barcodes.first.rawValue;
     final payload = AttendanceQrPayload.tryParse(raw);
     if (payload == null) {
       await _showMessage('유효하지 않은 QR입니다. 다시 스캔해주세요.');
@@ -50,14 +51,16 @@ class _AttendanceScanSheetFlutterState extends State<AttendanceScanSheetFlutter>
       return;
     }
 
-    widget.onConfirmed(payload);
+    await widget.onConfirmed(payload);
     if (!mounted) return;
     Navigator.of(context).pop(true);
   }
 
   Future<void> _showMessage(String message) async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override

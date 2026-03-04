@@ -14,8 +14,10 @@ import 'screens/daily_work_management_flutter.dart';
 import 'screens/job_request_management_flutter.dart';
 import 'screens/job_request_remote_management_flutter.dart';
 import 'screens/member_management_flutter.dart';
+import 'screens/member_management_remote_flutter.dart';
 import 'screens/notice_management_flutter.dart';
 import 'screens/permission_management_flutter.dart';
+import 'screens/permission_management_remote_flutter.dart';
 import 'screens/site_management_flutter.dart';
 import 'screens/wage_management_flutter.dart';
 import 'screens/work_record_remote_management_flutter.dart';
@@ -95,6 +97,13 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
   final Set<int> _remoteWorkRecordsLoadingJobPostIds = <int>{};
   final Map<int, String> _remoteWorkerNamesByUserId = {};
   final Map<int, CwmpNoShowSummaryResponse> _remoteNoShowSummaryByUserId = {};
+  List<CwmpAdminUserSummaryResponse> _remoteAdminUsers = const [];
+  CwmpAdminUserDetailResponse? _remoteSelectedMemberDetail;
+  bool _remoteAdminUsersSupported = true;
+  List<CwmpAdminPermissionTemplateResponse> _remotePermissionTemplates =
+      const [];
+  bool _remotePermissionTemplatesSupported = true;
+  List<String> _remoteWarnings = const [];
   String _matchStatusFilter = 'ALL';
   String _matchNoShowFilter = 'ALL';
   String _matchWorkRecordStatusFilter = 'ALL';
@@ -166,6 +175,12 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
         _remoteWorkRecordsLoadingJobPostIds.clear();
         _remoteWorkerNamesByUserId.clear();
         _remoteNoShowSummaryByUserId.clear();
+        _remoteAdminUsers = const [];
+        _remoteSelectedMemberDetail = null;
+        _remoteAdminUsersSupported = true;
+        _remotePermissionTemplates = const [];
+        _remotePermissionTemplatesSupported = true;
+        _remoteWarnings = const [];
       });
       return;
     }
@@ -245,37 +260,143 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
     setState(() {
       _isRemoteLoading = true;
       _remoteLoadError = null;
+      _remoteWarnings = const [];
     });
     try {
-      final sites = await CwmpApiRepository.instance
-          .getAdminPendingSiteRequests();
-      final jobRequests = await CwmpApiRepository.instance
-          .getAdminPendingJobRequests();
-      final notifications = await CwmpApiRepository.instance.getNotifications();
-      final jobPosts = await CwmpApiRepository.instance.getJobPosts(
-        includeOtherRegions: true,
-      );
+      final warnings = <String>[];
+      final needsSites = _view == AdminView.sites;
+      final needsJobRequests = _view == AdminView.jobRequests;
+      final needsJobPosts =
+          _view == AdminView.jobRequests ||
+          _view == AdminView.dailyWork ||
+          _view == AdminView.wage;
+      final needsNotifications = _view == AdminView.notices;
+      final needsAdminUsers =
+          _view == AdminView.members || _view == AdminView.permissions;
+      final needsPermissionTemplates = _view == AdminView.permissions;
+
+      List<CwmpConstructionSiteResponse>? sites;
+      if (needsSites) {
+        sites = await CwmpApiRepository.instance.getAdminPendingSiteRequests();
+      }
+
+      List<CwmpJobRequestResponse>? jobRequests;
+      if (needsJobRequests) {
+        jobRequests = await CwmpApiRepository.instance
+            .getAdminPendingJobRequests();
+      }
+
+      List<CwmpNotificationResponse>? notifications;
+      if (needsNotifications) {
+        notifications = await CwmpApiRepository.instance.getNotifications();
+      }
+
+      List<CwmpJobPostResponse>? jobPosts;
+      if (needsJobPosts) {
+        jobPosts = await CwmpApiRepository.instance.getJobPosts(
+          includeOtherRegions: true,
+        );
+      }
+
+      List<CwmpAdminUserSummaryResponse>? adminUsers;
+      var adminUsersSupported = _remoteAdminUsersSupported;
+      if (needsAdminUsers) {
+        try {
+          adminUsers = await CwmpApiRepository.instance.getAdminUsers();
+          adminUsersSupported = true;
+        } on CwmpApiException catch (e) {
+          if (e.statusCode == 401) rethrow;
+          if (e.statusCode == 404) {
+            adminUsersSupported = false;
+            final warning =
+                '회원 관리 API(/api/admin/users)가 404라 회원 관리 화면은 목업으로 표시됩니다.';
+            warnings.add(warning);
+            _logRemoteWarning(warning);
+          } else {
+            final warning = '회원 목록 조회 실패: ${e.message}';
+            warnings.add(warning);
+            _logRemoteWarning(warning);
+          }
+        } catch (e) {
+          final warning = '회원 목록 조회 중 오류: $e';
+          warnings.add(warning);
+          _logRemoteWarning(warning);
+        }
+      }
+
+      List<CwmpAdminPermissionTemplateResponse>? permissionTemplates;
+      var permissionTemplatesSupported = _remotePermissionTemplatesSupported;
+      if (needsPermissionTemplates) {
+        try {
+          permissionTemplates = await CwmpApiRepository.instance
+              .getAdminPermissionTemplates();
+          permissionTemplatesSupported = true;
+        } on CwmpApiException catch (e) {
+          if (e.statusCode == 401) rethrow;
+          if (e.statusCode == 404) {
+            permissionTemplatesSupported = false;
+            final warning =
+                '권한 관리 API(/api/admin/permissions)가 404라 권한 관리 화면은 목업으로 표시됩니다.';
+            warnings.add(warning);
+            _logRemoteWarning(warning);
+          } else {
+            final warning = '권한 템플릿 조회 실패: ${e.message}';
+            warnings.add(warning);
+            _logRemoteWarning(warning);
+          }
+        } catch (e) {
+          final warning = '권한 템플릿 조회 중 오류: $e';
+          warnings.add(warning);
+          _logRemoteWarning(warning);
+        }
+      }
       if (!mounted) return;
       setState(() {
-        _remoteSites = sites.map(_toAdminSiteMap).toList();
-        _remoteJobRequests = jobRequests
-            .map(CwmpEmployerAppAdapter.toJobRequestMap)
-            .toList();
-        _remoteNotices = notifications.map(_toAdminNoticeMap).toList();
-        _remotePublishedJobPosts = jobPosts;
-        final validIds = jobPosts.map((e) => e.id).toSet();
-        _remoteMatchesByJobPost.removeWhere(
-          (key, _) => !validIds.contains(key),
-        );
-        _remoteMatchesLoadingJobPostIds.removeWhere(
-          (id) => !validIds.contains(id),
-        );
-        _remoteWorkRecordsByJobPost.removeWhere(
-          (key, _) => !validIds.contains(key),
-        );
-        _remoteWorkRecordsLoadingJobPostIds.removeWhere(
-          (id) => !validIds.contains(id),
-        );
+        if (sites != null) {
+          _remoteSites = sites.map(_toAdminSiteMap).toList();
+        }
+        if (jobRequests != null) {
+          _remoteJobRequests = jobRequests
+              .map(CwmpEmployerAppAdapter.toJobRequestMap)
+              .toList();
+        }
+        if (notifications != null) {
+          _remoteNotices = notifications.map(_toAdminNoticeMap).toList();
+        }
+        if (jobPosts != null) {
+          _remotePublishedJobPosts = jobPosts;
+        }
+        _remoteAdminUsersSupported = adminUsersSupported;
+        _remotePermissionTemplatesSupported = permissionTemplatesSupported;
+        _remoteWarnings = warnings;
+        if (adminUsers != null) {
+          _remoteAdminUsers = adminUsers;
+        }
+        if (permissionTemplates != null) {
+          _remotePermissionTemplates = permissionTemplates;
+        }
+        if (_remoteSelectedMemberDetail != null) {
+          final selectedId = _remoteSelectedMemberDetail!.summary.id;
+          if (!adminUsersSupported ||
+              !_remoteAdminUsers.any((u) => u.id == selectedId)) {
+            _remoteSelectedMemberDetail = null;
+          }
+        }
+        if (jobPosts != null) {
+          final validIds = jobPosts.map((e) => e.id).toSet();
+          _remoteMatchesByJobPost.removeWhere(
+            (key, _) => !validIds.contains(key),
+          );
+          _remoteMatchesLoadingJobPostIds.removeWhere(
+            (id) => !validIds.contains(id),
+          );
+          _remoteWorkRecordsByJobPost.removeWhere(
+            (key, _) => !validIds.contains(key),
+          );
+          _remoteWorkRecordsLoadingJobPostIds.removeWhere(
+            (id) => !validIds.contains(id),
+          );
+        }
       });
       if (_view == AdminView.dailyWork || _view == AdminView.wage) {
         _prefetchRemoteWorkRecordsForPublishedJobPosts(forceRefresh: true);
@@ -812,9 +933,19 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
       _remoteWorkRecordsLoadingJobPostIds.clear();
       _remoteWorkerNamesByUserId.clear();
       _remoteNoShowSummaryByUserId.clear();
+      _remoteAdminUsers = const [];
+      _remoteSelectedMemberDetail = null;
+      _remoteAdminUsersSupported = true;
+      _remotePermissionTemplates = const [];
+      _remotePermissionTemplatesSupported = true;
+      _remoteWarnings = const [];
       _remoteLoadError = '관리자 세션이 만료되었습니다. 다시 로그인해주세요.';
       _isAuthenticated = false;
     });
+  }
+
+  void _logRemoteWarning(String message) {
+    debugPrint('[Admin][RemoteWarning] $message');
   }
 
   String _titleForView(AdminView view) {
@@ -833,6 +964,155 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
         return '임금 관리';
       case AdminView.notices:
         return '공지 관리';
+    }
+  }
+
+  Future<void> _selectRemoteAdminMember(
+    CwmpAdminUserSummaryResponse member,
+  ) async {
+    if (!_hasRemoteSession) return;
+    setState(() {
+      _remoteSelectedMemberDetail = null;
+      _isRemoteLoading = true;
+      _remoteLoadError = null;
+    });
+    try {
+      final detail = await CwmpApiRepository.instance.getAdminUserDetail(
+        member.id,
+      );
+      if (!mounted) return;
+      setState(() => _remoteSelectedMemberDetail = detail);
+    } on CwmpApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 401) {
+        await _handleSessionExpired();
+        return;
+      }
+      setState(() => _remoteLoadError = e.message);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _remoteLoadError = '회원 상세 조회 실패: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isRemoteLoading = false);
+      }
+    }
+  }
+
+  void _backRemoteAdminMember() {
+    setState(() => _remoteSelectedMemberDetail = null);
+  }
+
+  Future<CwmpAdminPermissionUserResponse> _loadRemotePermissionUser(
+    int userId,
+  ) async {
+    if (!_hasRemoteSession) {
+      throw Exception('관리자 세션이 필요합니다.');
+    }
+    try {
+      return await CwmpApiRepository.instance.getAdminPermissionUser(userId);
+    } on CwmpApiException catch (e) {
+      if (e.statusCode == 401) {
+        await _handleSessionExpired();
+      }
+      rethrow;
+    }
+  }
+
+  Future<CwmpAdminPermissionUserResponse> _updateRemotePermissionUser({
+    required int userId,
+    String? role,
+    int? perm,
+  }) async {
+    if (!_hasRemoteSession) {
+      throw Exception('관리자 세션이 필요합니다.');
+    }
+    try {
+      final updated = await CwmpApiRepository.instance
+          .updateAdminPermissionUser(userId: userId, role: role, perm: perm);
+      final index = _remoteAdminUsers.indexWhere((u) => u.id == userId);
+      if (index >= 0) {
+        final prev = _remoteAdminUsers[index];
+        final nextSummary = CwmpAdminUserSummaryResponse(
+          id: prev.id,
+          name: prev.name,
+          phoneNumber: prev.phoneNumber,
+          role: updated.role ?? prev.role,
+          perm: updated.perm,
+          phoneVerified: prev.phoneVerified,
+          status: prev.status,
+          noShowCount: prev.noShowCount,
+          latestNoShowAt: prev.latestNoShowAt,
+        );
+        setState(() {
+          _remoteAdminUsers = [
+            ..._remoteAdminUsers.take(index),
+            nextSummary,
+            ..._remoteAdminUsers.skip(index + 1),
+          ];
+          if (_remoteSelectedMemberDetail?.summary.id == userId) {
+            final current = _remoteSelectedMemberDetail!;
+            _remoteSelectedMemberDetail = CwmpAdminUserDetailResponse(
+              summary: nextSummary,
+              email: current.email,
+              gender: current.gender,
+              nationality: current.nationality,
+              address: current.address,
+              idNumber: current.idNumber,
+              bankName: current.bankName,
+              accountNumber: current.accountNumber,
+              accountHolder: current.accountHolder,
+            );
+          }
+        });
+      }
+      return updated;
+    } on CwmpApiException catch (e) {
+      if (e.statusCode == 401) {
+        await _handleSessionExpired();
+      }
+      rethrow;
+    }
+  }
+
+  Future<CwmpAdminUserDetailResponse> _updateRemoteAdminUser({
+    required int userId,
+    String? name,
+    String? role,
+    int? perm,
+    bool? phoneVerified,
+  }) async {
+    if (!_hasRemoteSession) {
+      throw Exception('관리자 세션이 필요합니다.');
+    }
+    try {
+      final updated = await CwmpApiRepository.instance.updateAdminUser(
+        userId: userId,
+        name: name,
+        role: role,
+        perm: perm,
+        phoneVerified: phoneVerified,
+      );
+      final summary = updated.summary;
+      final index = _remoteAdminUsers.indexWhere((u) => u.id == userId);
+      setState(() {
+        if (index >= 0) {
+          _remoteAdminUsers = [
+            ..._remoteAdminUsers.take(index),
+            summary,
+            ..._remoteAdminUsers.skip(index + 1),
+          ];
+        }
+        if (_remoteSelectedMemberDetail?.summary.id == userId) {
+          _remoteSelectedMemberDetail = updated;
+        }
+      });
+      return updated;
+    } on CwmpApiException catch (e) {
+      if (e.statusCode == 401) {
+        await _handleSessionExpired();
+      }
+      rethrow;
     }
   }
 
@@ -872,13 +1152,16 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
       leading: Icon(icon),
       title: Text(label),
       selected: _view == view,
-      onTap: () {
+      onTap: () async {
         setState(() {
           _view = view;
           _selectedMember = null;
         });
         _persistAdminUiState();
         Navigator.of(context).pop();
+        if (_hasRemoteSession) {
+          await _refreshRemoteAdminData();
+        }
         if (view == AdminView.jobRequests) {
           _prefetchRemoteMatchesForPublishedJobPosts();
           _prefetchRemoteWorkRecordsForPublishedJobPosts();
@@ -893,6 +1176,18 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
   Widget _buildViewBody() {
     switch (_view) {
       case AdminView.members:
+        if (_hasRemoteSession && _remoteAdminUsersSupported) {
+          return MemberManagementRemoteFlutter(
+            members: _remoteAdminUsers,
+            selectedMemberDetail: _remoteSelectedMemberDetail,
+            isLoading: _isRemoteLoading,
+            error: _remoteLoadError,
+            onRefresh: _refreshRemoteAdminData,
+            onSelectMember: _selectRemoteAdminMember,
+            onBack: _backRemoteAdminMember,
+            onUpdateMember: _updateRemoteAdminUser,
+          );
+        }
         return MemberManagementFlutter(
           members: _members,
           selectedMember: _selectedMember,
@@ -978,6 +1273,17 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
         }
         return const DailyWorkManagementFlutter();
       case AdminView.permissions:
+        if (_hasRemoteSession && _remotePermissionTemplatesSupported) {
+          return PermissionManagementRemoteFlutter(
+            templates: _remotePermissionTemplates,
+            users: _remoteAdminUsers,
+            isLoading: _isRemoteLoading,
+            error: _remoteLoadError,
+            onRefresh: _refreshRemoteAdminData,
+            onLoadUserPermission: _loadRemotePermissionUser,
+            onUpdateUserPermission: _updateRemotePermissionUser,
+          );
+        }
         return const PermissionManagementFlutter();
       case AdminView.wage:
         if (_hasRemoteSession) {
@@ -1552,6 +1858,12 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
           _remoteWorkRecordsLoadingJobPostIds.clear();
           _remoteWorkerNamesByUserId.clear();
           _remoteNoShowSummaryByUserId.clear();
+          _remoteAdminUsers = const [];
+          _remoteSelectedMemberDetail = null;
+          _remoteAdminUsersSupported = true;
+          _remotePermissionTemplates = const [];
+          _remotePermissionTemplatesSupported = true;
+          _remoteWarnings = const [];
           _selectedMember = null;
         }),
         body: AnimatedSwitcher(
@@ -1629,6 +1941,8 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
 
   Widget _buildRemoteAdminBanner() {
     final hasError = (_remoteLoadError ?? '').trim().isNotEmpty;
+    final warnings = _remoteWarnings.where((e) => e.trim().isNotEmpty).toList();
+    final hasWarnings = warnings.isNotEmpty;
     final bg = hasError ? const Color(0xFFFEF2F2) : const Color(0xFFEFF6FF);
     final border = hasError ? const Color(0xFFFECACA) : const Color(0xFFBFDBFE);
     final titleColor = hasError
@@ -1665,6 +1979,17 @@ class _AdminAppFlutterState extends State<AdminAppFlutter> {
                   subtitle,
                   style: TextStyle(color: titleColor, fontSize: 12),
                 ),
+                if (hasWarnings) ...[
+                  const SizedBox(height: 6),
+                  for (final warning in warnings)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Text(
+                        '• $warning',
+                        style: TextStyle(color: titleColor, fontSize: 12),
+                      ),
+                    ),
+                ],
               ],
             ),
           ),
