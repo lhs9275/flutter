@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
@@ -2389,6 +2390,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     final meetingPoint = _requestMeetingController.text.trim();
     final notes = _requestNotesController.text.trim();
     final memo = _requestMemoController.text.trim();
+    var submitMessage = '구인 요청이 등록되었습니다.';
     if (date.isEmpty || time.isEmpty) {
       ScaffoldMessenger.of(
         context,
@@ -2422,7 +2424,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
           ? siteTradeRaw
           : '보통인부';
       try {
-        await CwmpApiRepository.instance.createJobRequest(
+        final createdRequest = await CwmpApiRepository.instance.createJobRequest(
           siteId: remoteSiteId,
           workDate: date,
           startTime: startTime,
@@ -2433,6 +2435,22 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
           requirements: notes,
           employerMemo: memo,
         );
+        final status = createdRequest.status.trim().toUpperCase();
+        final jobPostId = createdRequest.jobPostId;
+        final immediatelyApproved =
+            status == 'APPROVED' || (jobPostId != null && jobPostId > 0);
+        developer.log(
+          'createJobRequest response'
+          ' id=${createdRequest.id}'
+          ' siteId=${createdRequest.siteId}'
+          ' status=$status'
+          ' jobPostId=${jobPostId ?? '-'}'
+          ' workDate=${createdRequest.workDate}',
+          name: 'EmployerAppFlutter',
+        );
+        submitMessage = immediatelyApproved
+            ? '구인 요청 등록됨. 서버 응답: 즉시 승인(status=$status, jobPostId=${jobPostId ?? '-'})'
+            : '구인 요청 등록됨. 서버 응답: 승인 대기(status=$status)';
         await _refreshRemoteEmployerData();
       } on CwmpApiException catch (e) {
         if (!mounted) return;
@@ -2467,7 +2485,7 @@ class _EmployerAppFlutterState extends State<EmployerAppFlutter> {
     }
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('구인 요청이 등록되었습니다.')));
+    ).showSnackBar(SnackBar(content: Text(submitMessage)));
     setState(() {
       _requestCountController.text = '1';
       _requestMemoController.clear();

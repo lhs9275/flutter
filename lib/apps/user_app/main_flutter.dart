@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -923,19 +925,32 @@ class _UserAppFlutterState extends State<UserAppFlutter> {
         );
         if (!mounted) return;
         final status = response.status.toUpperCase();
+        final immediatelyConfirmed = status == 'CONFIRMED';
+        developer.log(
+          'applyJobPost response'
+          ' matchId=${response.id}'
+          ' jobPostId=${response.jobPostId}'
+          ' workerId=${response.workerId}'
+          ' status=$status'
+          ' preferredHire=${response.preferredHire}'
+          ' selectionOrder=${response.selectionOrder ?? '-'}',
+          name: 'UserAppFlutter',
+        );
         setState(() {
           _applications[id] = ApplicationRecord(
-            status: status == 'CONFIRMED'
+            status: immediatelyConfirmed
                 ? ApplicationStatus.confirmed
                 : ApplicationStatus.applied,
             appliedAt: record?.appliedAt ?? DateTime.now(),
-            confirmedAt: status == 'CONFIRMED' ? DateTime.now() : null,
+            confirmedAt: immediatelyConfirmed ? DateTime.now() : null,
           );
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              status == 'CONFIRMED' ? '지원이 확정되었습니다.' : '지원이 완료되었습니다.',
+              immediatelyConfirmed
+                  ? '지원 응답: 즉시 확정(status=$status, matchId=${response.id})'
+                  : '지원 응답: 접수(status=$status, matchId=${response.id})',
             ),
           ),
         );

@@ -48,6 +48,34 @@ String _asString(dynamic value, {String fallback = ''}) {
   return value.toString();
 }
 
+Map<String, dynamic>? _asJsonMap(dynamic value) {
+  if (value is Map) {
+    return value.map(
+      (key, dynamic entryValue) => MapEntry(key.toString(), entryValue),
+    );
+  }
+  return null;
+}
+
+String _firstNonEmptyString(
+  Iterable<dynamic> values, {
+  String fallback = '',
+}) {
+  for (final value in values) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isNotEmpty) return text;
+  }
+  return fallback;
+}
+
+String? _firstNullableString(Iterable<dynamic> values) {
+  for (final value in values) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isNotEmpty) return text;
+  }
+  return null;
+}
+
 int? _asInt(dynamic value) {
   if (value == null) return null;
   if (value is int) return value;
@@ -55,11 +83,27 @@ int? _asInt(dynamic value) {
   return int.tryParse(value.toString());
 }
 
+int? _firstInt(Iterable<dynamic> values) {
+  for (final value in values) {
+    final parsed = _asInt(value);
+    if (parsed != null) return parsed;
+  }
+  return null;
+}
+
 double? _asDouble(dynamic value) {
   if (value == null) return null;
   if (value is double) return value;
   if (value is num) return value.toDouble();
   return double.tryParse(value.toString());
+}
+
+double? _firstDouble(Iterable<dynamic> values) {
+  for (final value in values) {
+    final parsed = _asDouble(value);
+    if (parsed != null) return parsed;
+  }
+  return null;
 }
 
 num? _asNum(dynamic value) {
@@ -73,10 +117,12 @@ bool _asBool(dynamic value, {bool fallback = false}) {
   if (value is bool) return value;
   if (value is num) return value != 0;
   final normalized = value.toString().trim().toLowerCase();
-  if (normalized == 'true' || normalized == 'y' || normalized == '1')
+  if (normalized == 'true' || normalized == 'y' || normalized == '1') {
     return true;
-  if (normalized == 'false' || normalized == 'n' || normalized == '0')
+  }
+  if (normalized == 'false' || normalized == 'n' || normalized == '0') {
     return false;
+  }
   return fallback;
 }
 
@@ -229,31 +275,93 @@ class CwmpJobPostResponse {
   final double? siteLongitude;
 
   factory CwmpJobPostResponse.fromJson(Map<String, dynamic> json) {
-    final nestedSiteJson = json['site'];
-    final nestedSiteId = nestedSiteJson is Map
-        ? _asInt(nestedSiteJson['id'])
-        : null;
+    final nestedSiteJson =
+        _asJsonMap(json['site']) ??
+        _asJsonMap(json['constructionSite']) ??
+        _asJsonMap(json['construction_site']);
     return CwmpJobPostResponse(
       id: _asInt(json['id']) ?? 0,
-      siteId:
-          _asInt(json['siteId']) ??
-          _asInt(json['site_id']) ??
-          _asInt(json['constructionSiteId']) ??
-          _asInt(json['construction_site_id']) ??
-          nestedSiteId,
-      title: _asString(json['title']),
-      description: json['description']?.toString(),
-      workDate: _asString(json['workDate']),
-      startTime: json['startTime']?.toString(),
-      headcount: _asInt(json['headcount']) ?? 0,
-      dailyRate: _asInt(json['dailyRate']),
-      requirements: json['requirements']?.toString(),
-      regionCode: json['regionCode']?.toString(),
-      status: _asString(json['status']),
-      siteName: _asString(json['siteName']),
-      siteAddress: _asString(json['siteAddress']),
-      siteLatitude: _asDouble(json['siteLatitude']),
-      siteLongitude: _asDouble(json['siteLongitude']),
+      siteId: _firstInt([
+        json['siteId'],
+        json['site_id'],
+        json['constructionSiteId'],
+        json['construction_site_id'],
+        nestedSiteJson?['id'],
+      ]),
+      title: _firstNonEmptyString([
+        json['title'],
+        json['jobTitle'],
+        json['job_title'],
+      ]),
+      description: _firstNullableString([
+        json['description'],
+        json['content'],
+      ]),
+      workDate: _firstNonEmptyString([
+        json['workDate'],
+        json['work_date'],
+        json['date'],
+      ]),
+      startTime: _firstNullableString([
+        json['startTime'],
+        json['start_time'],
+      ]),
+      headcount:
+          _firstInt([
+            json['headcount'],
+            json['head_count'],
+            json['count'],
+          ]) ??
+          0,
+      dailyRate: _firstInt([
+        json['dailyRate'],
+        json['daily_rate'],
+        json['pay'],
+      ]),
+      requirements: _firstNullableString([
+        json['requirements'],
+        json['requirement'],
+      ]),
+      regionCode: _firstNullableString([
+        json['regionCode'],
+        json['region_code'],
+        nestedSiteJson?['regionCode'],
+        nestedSiteJson?['region_code'],
+      ]),
+      status: _firstNonEmptyString([
+        json['status'],
+        json['approvalStatus'],
+        json['approval_status'],
+      ]),
+      siteName: _firstNonEmptyString([
+        json['siteName'],
+        json['site_name'],
+        json['constructionSiteName'],
+        json['construction_site_name'],
+        nestedSiteJson?['siteName'],
+        nestedSiteJson?['site_name'],
+        nestedSiteJson?['name'],
+      ]),
+      siteAddress: _firstNonEmptyString([
+        json['siteAddress'],
+        json['site_address'],
+        json['address'],
+        nestedSiteJson?['siteAddress'],
+        nestedSiteJson?['site_address'],
+        nestedSiteJson?['address'],
+      ]),
+      siteLatitude: _firstDouble([
+        json['siteLatitude'],
+        json['site_latitude'],
+        nestedSiteJson?['latitude'],
+        nestedSiteJson?['lat'],
+      ]),
+      siteLongitude: _firstDouble([
+        json['siteLongitude'],
+        json['site_longitude'],
+        nestedSiteJson?['longitude'],
+        nestedSiteJson?['lng'],
+      ]),
     );
   }
 }
